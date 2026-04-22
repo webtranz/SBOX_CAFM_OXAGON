@@ -73,6 +73,30 @@ async function main() {
     },
   });
 
+  await prisma.department.upsert({
+    where: { code: "MEP" },
+    update: {},
+    create: {
+      code: "MEP",
+      name: "MEP Department",
+      siteLocation: "Tower A",
+      description: "Mechanical, electrical and plumbing services.",
+    },
+  });
+
+  await prisma.employee.upsert({
+    where: { companyId: "EMP-001" },
+    update: {},
+    create: {
+      name: "Adeel Khan",
+      email: "adeel.employee@brightworks.local",
+      companyId: "EMP-001",
+      nationalityType: "Resident",
+      departmentCode: "MEP",
+      siteLocation: "Tower A",
+    },
+  });
+
   await prisma.assetCategory.upsert({
     where: { code: "HVAC" },
     update: {},

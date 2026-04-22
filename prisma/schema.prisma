@@ -61,6 +61,26 @@ model Permission {
   roleLinks   RolePermission[]
 }
 
+model Department {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  siteLocation String
+  description String
+  createdAt   DateTime @default(now())
+}
+
+model Employee {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  companyId       String   @unique
+  nationalityType String
+  departmentCode  String
+  siteLocation    String
+  createdAt       DateTime @default(now())
+}
+
 model RolePermission {
   id           String     @id @default(cuid())
   role         String

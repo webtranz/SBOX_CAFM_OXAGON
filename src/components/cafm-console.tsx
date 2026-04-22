@@ -57,6 +57,9 @@ type ConsoleData = {
   ppms: any[];
   users: any[];
   permissions: any[];
+  departments: any[];
+  employees: any[];
+  rolePermissions: any[];
 };
 
 const moduleGroups = [
@@ -115,8 +118,8 @@ const moduleGroups = [
     label: "Human Resources",
     icon: Users,
     items: [
-      { id: "users", label: "Users", icon: Users },
-      { id: "users", label: "Roles & Permissions", icon: ShieldCheck },
+              { id: "hr", label: "Employees", icon: Users },
+              { id: "users", label: "Roles & Permissions", icon: ShieldCheck },
     ],
   },
   {
@@ -423,10 +426,12 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
               teams={records.teams}
               services={records.services}
               categories={records.categories}
+              departments={records.departments}
               saving={saving}
               submitTeam={(formData) => postRecord("/api/teams", formData, "Team")}
               submitService={(formData) => postRecord("/api/services", formData, "Service")}
               submitCategory={(formData) => postRecord("/api/asset-categories", formData, "Asset category")}
+              submitDepartment={(formData) => postRecord("/api/departments", formData, "Department")}
             />
           )}
           {active === "bulk" && <BulkUpload saving={saving} onSubmit={bulkUpload} />}
@@ -436,15 +441,29 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
               users={records.users}
               teams={records.teams}
               permissions={records.permissions}
+              rolePermissions={records.rolePermissions}
               saving={saving}
               submitUser={(formData) => postRecord("/api/users", formData, "User")}
               updateUser={(id, formData) => patchRecord(`/api/users/${id}`, Object.fromEntries(formData.entries()) as Record<string, string>, "User updated.")}
               deleteUser={(id) => deleteRecord(`/api/users/${id}`, "User deleted.")}
               refreshData={refreshData}
               setToast={(message) => setToast(cleanMessage(message))}
+              saveRolePermissions={async (role, permissionCodes) => {
+                setSaving(true);
+                const response = await fetch("/api/role-permissions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ role, permissionCodes }),
+                });
+                const result = await response.json();
+                setToast(response.ok ? "Role permissions updated." : cleanMessage(result.message ?? "Permission update failed."));
+                await refreshData();
+                setSaving(false);
+              }}
             />
           )}
           {active === "reports" && <Reports />}
+          {active === "hr" && <HumanResources employees={records.employees} departments={records.departments} saving={saving} submitEmployee={(formData) => postRecord("/api/employees", formData, "Employee")} />}
         </section>
       </section>
     </main>
@@ -751,10 +770,34 @@ function Helpdesk({ requests, submitRequest, saving }: { requests: any[]; submit
 }
 
 function Ppm({ ppms, submitPpm, saving }: { ppms: any[]; submitPpm: (formData: FormData) => void; saving: boolean }) {
+  const grouped = ppms.reduce((acc: Record<string, any[]>, ppm) => {
+    const key = ppm.nextDue ? new Date(ppm.nextDue).toISOString().slice(0, 10) : "Unscheduled";
+    acc[key] = [...(acc[key] ?? []), ppm];
+    return acc;
+  }, {});
+
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Preventive Maintenance Planner" icon={CalendarCheck}>
         <DataTable rows={ppms} columns={[["code", "Code"], ["name", "PPM"], ["assetTag", "Asset"], ["frequency", "Frequency"], ["nextDue", "Next due"], ["active", "Active"]]} />
+        <div className="mt-5">
+          <h4 className="font-black">PPM Calendar</h4>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {Object.entries(grouped).map(([date, items]) => (
+              <div key={date} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="font-black text-lagoon">{date}</p>
+                <div className="mt-2 grid gap-2">
+                  {items.map((ppm) => (
+                    <div key={ppm.id} className="rounded-lg bg-white p-2 text-sm">
+                      <p className="font-bold">{ppm.name}</p>
+                      <p className="text-slate-500">{ppm.assetTag} / {ppm.frequency}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </Panel>
       <ActionForm title="Create PPM" onSubmit={submitPpm} fields={["code", "name", "assetTag", "frequency", "durationHrs", "checklist"]} saving={saving} />
     </section>
@@ -863,18 +906,22 @@ function TeamsServices({
   teams,
   services,
   categories,
+  departments,
   saving,
   submitTeam,
   submitService,
   submitCategory,
+  submitDepartment,
 }: {
   teams: any[];
   services: any[];
   categories: any[];
+  departments: any[];
   saving: boolean;
   submitTeam: (formData: FormData) => void;
   submitService: (formData: FormData) => void;
   submitCategory: (formData: FormData) => void;
+  submitDepartment: (formData: FormData) => void;
 }) {
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
@@ -888,17 +935,50 @@ function TeamsServices({
         <Panel title="Asset Categories" icon={Boxes}>
           <DataTable rows={categories} columns={[["code", "Code"], ["name", "Category"], ["type", "Type"], ["defaultLifeYrs", "Life yrs"], ["statutory", "Statutory"]]} />
         </Panel>
+        <Panel title="Department Codes" icon={MapPinned}>
+          <DataTable rows={departments} columns={[["code", "Code"], ["name", "Department"], ["siteLocation", "Site"], ["description", "Description"]]} />
+        </Panel>
       </div>
       <div className="space-y-5">
-        <ActionForm title="Add Service Team" onSubmit={submitTeam} fields={["name", "companyIdNumber", "departmentCode", "service", "email", "phone"]} saving={saving} />
-        <ServiceForm teams={teams} onSubmit={submitService} saving={saving} />
+        <ActionForm title="Create Department Code" onSubmit={submitDepartment} fields={["code", "name", "siteLocation", "description"]} saving={saving} />
+        <TeamForm departments={departments} onSubmit={submitTeam} saving={saving} />
+        <ServiceForm teams={teams} departments={departments} onSubmit={submitService} saving={saving} />
         <ActionForm title="Add Asset Category" onSubmit={submitCategory} fields={["code", "name", "type", "defaultLifeYrs", "statutory", "description"]} saving={saving} />
       </div>
     </section>
   );
 }
 
-function ServiceForm({ teams, onSubmit, saving }: { teams: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+function TeamForm({ departments, onSubmit, saving }: { departments: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    form.reset();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">Add Service Team</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="name" required placeholder="Name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="companyIdNumber" required placeholder="Company ID number" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="departmentCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select department code</option>
+          {departments.map((department) => (
+            <option key={department.id} value={department.code}>{department.code} - {department.name}</option>
+          ))}
+        </select>
+        <input name="service" required placeholder="Service" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="email" type="email" placeholder="Email" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="phone" placeholder="Phone number" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Submit"}</button>
+      </div>
+    </form>
+  );
+}
+
+function ServiceForm({ teams, departments, onSubmit, saving }: { teams: any[]; departments: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -911,7 +991,12 @@ function ServiceForm({ teams, onSubmit, saving }: { teams: any[]; onSubmit: (for
       <h3 className="text-xl font-black">Add Service</h3>
       <div className="mt-4 grid gap-3">
         <input name="departmentName" required placeholder="Department name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <input name="departmentCode" required placeholder="Department code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="departmentCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select department code</option>
+          {departments.map((department) => (
+            <option key={department.id} value={department.code}>{department.code} - {department.name}</option>
+          ))}
+        </select>
         <select name="teamCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select team code</option>
           {teams.map((team) => (
@@ -946,6 +1031,8 @@ function BulkUpload({ saving, onSubmit }: { saving: boolean; onSubmit: (formData
               <option value="inspections">Inspections</option>
               <option value="teams">Teams</option>
               <option value="services">Services</option>
+              <option value="departments">Departments</option>
+              <option value="employees">Employees</option>
             </select>
           </label>
           <label className="grid gap-1 text-sm font-bold text-slate-600">
@@ -962,16 +1049,24 @@ function BulkUpload({ saving, onSubmit }: { saving: boolean; onSubmit: (formData
 }
 
 function Templates() {
+  const templates = [
+    ["assets", "Assets", "tag,name,category,system,criticality,status,serialNumber,manufacturer,model,floor,room,warrantyExpiry,contractRef,documentationUrl,purchaseCost,salvageValue,depreciationRate,conditionScore"],
+    ["departments", "Departments", "code,name,siteLocation,description"],
+    ["employees", "Employees", "name,email,companyId,nationalityType,departmentCode,siteLocation"],
+    ["teams", "Teams", "name,companyIdNumber,departmentCode,service,email,phone"],
+    ["services", "Services", "departmentName,departmentCode,teamCode"],
+    ["inventory", "Inventory", "sku,name,category,unit,onHand,reorderPoint,unitCost,vendor,location"],
+    ["requests", "Requests", "ticketNo,title,category,requester,channel,priority,status,location,slaHours,description"],
+    ["workOrders", "Work Orders", "woNo,title,type,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes"],
+    ["inspections", "Inspections", "code,title,area,inspector,risk,score,status,dueAt,findings"],
+  ];
+
   return (
     <Panel title="Bulk Upload Templates" icon={ClipboardCheck}>
       <div className="grid gap-3 text-sm lg:grid-cols-2">
-        <Template title="Assets" value="tag,name,category,system,criticality,status,serialNumber,manufacturer,model,floor,room,warrantyExpiry,contractRef,documentationUrl,purchaseCost,salvageValue,depreciationRate,conditionScore" />
-        <Template title="Teams" value="name,companyIdNumber,departmentCode,service,email,phone" />
-        <Template title="Services" value="departmentName,departmentCode,teamCode" />
-        <Template title="Inventory" value="sku,name,category,unit,onHand,reorderPoint,unitCost,vendor,location" />
-        <Template title="Requests" value="ticketNo,title,category,requester,channel,priority,status,location,slaHours,description" />
-        <Template title="Work Orders" value="woNo,title,type,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes" />
-        <Template title="Inspections" value="code,title,area,inspector,risk,score,status,dueAt,findings" />
+        {templates.map(([type, title, value]) => (
+          <Template key={type} type={type} title={title} value={value} />
+        ))}
       </div>
     </Panel>
   );
@@ -981,23 +1076,40 @@ function UsersRoles({
   users,
   teams,
   permissions,
+  rolePermissions,
   submitUser,
   updateUser,
   deleteUser,
+  saveRolePermissions,
   saving,
   setToast,
 }: {
   users: any[];
   teams: any[];
   permissions: any[];
+  rolePermissions: any[];
   submitUser: (formData: FormData) => void;
   updateUser: (id: string, formData: FormData) => void;
   deleteUser: (id: string) => void;
+  saveRolePermissions: (role: string, permissionCodes: string[]) => void;
   refreshData: () => void;
   saving: boolean;
   setToast: (message: string) => void;
 }) {
   const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [role, setRole] = useState("Admin");
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(
+    rolePermissions.filter((item) => item.role === "Admin").map((item) => item.permission.code),
+  );
+
+  function changeRole(nextRole: string) {
+    setRole(nextRole);
+    setSelectedPermissions(rolePermissions.filter((item) => item.role === nextRole).map((item) => item.permission.code));
+  }
+
+  function togglePermission(code: string) {
+    setSelectedPermissions((current) => current.includes(code) ? current.filter((item) => item !== code) : [...current, code]);
+  }
 
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
@@ -1024,7 +1136,28 @@ function UsersRoles({
           </div>
         </Panel>
         <Panel title="Permissions Matrix" icon={ShieldCheck}>
-          <DataTable rows={permissions} columns={[["module", "Module"], ["code", "Code"], ["name", "Permission"], ["description", "Description"]]} />
+          <div className="mb-4 flex flex-wrap gap-3">
+            <select value={role} onChange={(event) => changeRole(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3">
+              <option>Admin</option>
+              <option>Facility Manager</option>
+              <option>Supervisor</option>
+              <option>Technician</option>
+              <option>Helpdesk</option>
+              <option>Viewer</option>
+            </select>
+            <button onClick={() => saveRolePermissions(role, selectedPermissions)} className="rounded-lg bg-ink px-4 py-2 text-sm font-black text-white">Save Permissions</button>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {permissions.map((permission) => (
+              <label key={permission.id} className="flex items-start gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+                <input type="checkbox" checked={selectedPermissions.includes(permission.code)} onChange={() => togglePermission(permission.code)} className="mt-1" />
+                <span>
+                  <span className="block font-black">{permission.name}</span>
+                  <span className="block text-slate-500">{permission.module} / {permission.code}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </Panel>
       </div>
       <div className="space-y-5">
@@ -1076,6 +1209,47 @@ function UserForm({ title, user, teams, onSubmit, saving }: { title: string; use
   );
 }
 
+function HumanResources({ employees, departments, submitEmployee, saving }: { employees: any[]; departments: any[]; submitEmployee: (formData: FormData) => void; saving: boolean }) {
+  const [nationality, setNationality] = useState("All");
+  const nationalities = ["All", ...Array.from(new Set(employees.map((employee) => employee.nationalityType).filter(Boolean)))];
+  const filtered = nationality === "All" ? employees : employees.filter((employee) => employee.nationalityType === nationality);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await submitEmployee(new FormData(form));
+    form.reset();
+  }
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+      <Panel title="Employees" icon={Users}>
+        <div className="mb-4 flex items-center gap-3">
+          <select value={nationality} onChange={(event) => setNationality(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3">
+            {nationalities.map((item) => <option key={item}>{item}</option>)}
+          </select>
+        </div>
+        <DataTable rows={filtered} columns={[["name", "Name"], ["email", "Email"], ["companyId", "Company ID"], ["nationalityType", "Nationality"], ["departmentCode", "Dept"], ["siteLocation", "Site"]]} />
+      </Panel>
+      <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+        <h3 className="text-xl font-black">Add Employee</h3>
+        <div className="mt-4 grid gap-3">
+          <input name="name" required placeholder="Name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="email" required type="email" placeholder="Email" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="companyId" required placeholder="Company ID" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="nationalityType" required placeholder="Nationality type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <select name="departmentCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <option value="">Select department</option>
+            {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
+          </select>
+          <input name="siteLocation" required placeholder="Site location" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Employee"}</button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function Reports() {
   const [type, setType] = useState("assets");
   const [rows, setRows] = useState<any[]>([]);
@@ -1122,10 +1296,13 @@ function Reports() {
   );
 }
 
-function Template({ title, value }: { title: string; value: string }) {
+function Template({ type, title, value }: { type: string; title: string; value: string }) {
   return (
     <div className="rounded-lg bg-slate-50 p-3">
-      <p className="font-black">{title}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-black">{title}</p>
+        <a href={`/api/templates/${type}`} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Download CSV</a>
+      </div>
       <code className="mt-2 block break-words text-xs text-slate-600">{value}</code>
     </div>
   );

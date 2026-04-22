@@ -42,6 +42,8 @@ async function importRow(module: string, row: Row) {
   if (module === "workOrders") return importWorkOrder(row);
   if (module === "teams") return importTeam(row);
   if (module === "services") return importService(row);
+  if (module === "departments") return importDepartment(row);
+  if (module === "employees") return importEmployee(row);
   if (module === "categories") return importCategory(row);
   if (module === "inspections") return importInspection(row);
   throw new Error(`Unsupported module: ${module}`);
@@ -193,6 +195,31 @@ async function importTeam(row: Row) {
   });
 }
 
+async function importDepartment(row: Row) {
+  await prisma.department.upsert({
+    where: { code: required(row, "code") },
+    update: {
+      name: required(row, "name"),
+      siteLocation: row.siteLocation || "Unassigned",
+      description: row.description || "",
+    },
+    create: {
+      code: required(row, "code"),
+      name: required(row, "name"),
+      siteLocation: row.siteLocation || "Unassigned",
+      description: row.description || "",
+    },
+  });
+}
+
+async function importEmployee(row: Row) {
+  await prisma.employee.upsert({
+    where: { companyId: required(row, "companyId") },
+    update: employeePayload(row),
+    create: { companyId: required(row, "companyId"), ...employeePayload(row) },
+  });
+}
+
 async function importService(row: Row) {
   const team = row.teamCode ? await prisma.team.findUnique({ where: { code: row.teamCode } }) : null;
   await prisma.serviceCatalog.upsert({
@@ -258,6 +285,16 @@ function categoryPayload(row: Row) {
     defaultLifeYrs: integer(row.defaultLifeYrs, 10),
     statutory: ["true", "yes", "1"].includes(String(row.statutory || "").toLowerCase()),
     description: row.description || "",
+  };
+}
+
+function employeePayload(row: Row) {
+  return {
+    name: required(row, "name"),
+    email: required(row, "email"),
+    nationalityType: row.nationalityType || "Unspecified",
+    departmentCode: row.departmentCode || "UNASSIGNED",
+    siteLocation: row.siteLocation || "Unassigned",
   };
 }
 

@@ -68,4 +68,11 @@ export const fallbackData = {
   permissions: [
     { id: "perm1", code: "assets.manage", name: "Manage Assets", module: "Assets", description: "Create and edit assets" },
   ],
+  departments: [
+    { id: "d1", code: "MEP", name: "MEP Department", siteLocation: "Tower A", description: "Mechanical electrical plumbing" },
+  ],
+  employees: [
+    { id: "e1", name: "Adeel Khan", email: "adeel@brightworks.local", companyId: "EMP-001", nationalityType: "Resident", departmentCode: "MEP", siteLocation: "Tower A" },
+  ],
+  rolePermissions: [],
 };
