@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -69,32 +69,61 @@ const statToneClasses: Record<string, string> = {
 };
 
 export function CafmConsole({ data }: { data: ConsoleData }) {
+  const [records, setRecords] = useState(data);
   const [active, setActive] = useState("command");
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
+  const [health, setHealth] = useState<{ app: string; database: string; message?: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    checkHealth();
+  }, []);
 
   const filteredAssets = useMemo(() => {
-    return data.assets.filter((asset) => `${asset.tag} ${asset.name} ${asset.category}`.toLowerCase().includes(query.toLowerCase()));
-  }, [data.assets, query]);
+    return records.assets.filter((asset) => `${asset.tag} ${asset.name} ${asset.category}`.toLowerCase().includes(query.toLowerCase()));
+  }, [records.assets, query]);
+
+  async function checkHealth() {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    const result = await response.json();
+    setHealth(result);
+  }
+
+  async function refreshData() {
+    const response = await fetch("/api/operating-data", { cache: "no-store" });
+    if (response.ok) {
+      setRecords(await response.json());
+    }
+    await checkHealth();
+  }
 
   async function submitRequest(formData: FormData) {
+    setSaving(true);
     const payload = Object.fromEntries(formData.entries());
     const response = await fetch("/api/service-requests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    setToast(response.ok ? "Service request created and routed to helpdesk." : "Connect PostgreSQL to persist new records.");
+    const result = await response.json();
+    setToast(response.ok ? `Service request ${result.ticketNo} created and saved.` : result.message ?? "Service request failed.");
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   async function submitWorkOrder(formData: FormData) {
+    setSaving(true);
     const payload = Object.fromEntries(formData.entries());
     const response = await fetch("/api/work-orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    setToast(response.ok ? "Work order generated with SLA and job plan." : "Connect PostgreSQL to persist new records.");
+    const result = await response.json();
+    setToast(response.ok ? `Work order ${result.woNo} created and saved.` : result.message ?? "Work order failed.");
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   return (
@@ -114,9 +143,15 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
           <div className="mt-5 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm">
             <div className="flex items-center gap-2 font-bold text-emerald-700">
               <Activity size={16} />
-              {data.live ? "Database online" : "Demo mode"}
+              {health?.database === "connected" || records.live ? "Database online" : "Database issue"}
             </div>
-            <p className="mt-1 text-emerald-900/70">Portfolio cockpit, helpdesk, maintenance, safety, inventory and IoT in one operating layer.</p>
+            <p className="mt-1 text-emerald-900/70">
+              {health ? `Status: ${health.database}` : "Checking database..."}
+            </p>
+            {health?.message && <p className="mt-1 break-words text-xs text-coral">{health.message}</p>}
+            <button onClick={checkHealth} className="mt-3 h-9 rounded-lg bg-white px-3 text-xs font-black text-lagoon shadow-sm">
+              Check DB
+            </button>
           </div>
 
           <nav className="mt-5 grid gap-2">
@@ -178,14 +213,14 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
             ))}
           </section>
 
-          {active === "command" && <CommandCenter data={data} />}
+          {active === "command" && <CommandCenter data={records} />}
           {active === "assets" && <Assets assets={filteredAssets} query={query} setQuery={setQuery} />}
-          {active === "work" && <WorkOrders data={data} submitWorkOrder={submitWorkOrder} />}
-          {active === "helpdesk" && <Helpdesk requests={data.requests} submitRequest={submitRequest} />}
+          {active === "work" && <WorkOrders data={records} submitWorkOrder={submitWorkOrder} saving={saving} />}
+          {active === "helpdesk" && <Helpdesk requests={records.requests} submitRequest={submitRequest} saving={saving} />}
           {active === "ppm" && <Ppm />}
-          {active === "inventory" && <Inventory inventory={data.inventory} />}
-          {active === "hse" && <Hse inspections={data.inspections} />}
-          {active === "iot" && <Iot alerts={data.alerts} />}
+          {active === "inventory" && <Inventory inventory={records.inventory} />}
+          {active === "hse" && <Hse inspections={records.inspections} />}
+          {active === "iot" && <Iot alerts={records.alerts} />}
         </section>
       </section>
     </main>
@@ -287,7 +322,7 @@ function Assets({ assets, query, setQuery }: { assets: any[]; query: string; set
   );
 }
 
-function WorkOrders({ data, submitWorkOrder }: { data: ConsoleData; submitWorkOrder: (formData: FormData) => void }) {
+function WorkOrders({ data, submitWorkOrder, saving }: { data: ConsoleData; submitWorkOrder: (formData: FormData) => void; saving: boolean }) {
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Work Order Control" icon={Wrench}>
@@ -303,12 +338,12 @@ function WorkOrders({ data, submitWorkOrder }: { data: ConsoleData; submitWorkOr
           ]}
         />
       </Panel>
-      <ActionForm title="Generate Work Order" onSubmit={submitWorkOrder} fields={["title", "type", "priority", "assetTag", "jobPlan"]} />
+      <ActionForm title="Generate Work Order" onSubmit={submitWorkOrder} fields={["title", "type", "priority", "assetTag", "jobPlan"]} saving={saving} />
     </section>
   );
 }
 
-function Helpdesk({ requests, submitRequest }: { requests: any[]; submitRequest: (formData: FormData) => void }) {
+function Helpdesk({ requests, submitRequest, saving }: { requests: any[]; submitRequest: (formData: FormData) => void; saving: boolean }) {
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Helpdesk & SLA Triage" icon={TicketCheck}>
@@ -325,7 +360,7 @@ function Helpdesk({ requests, submitRequest }: { requests: any[]; submitRequest:
           ]}
         />
       </Panel>
-      <ActionForm title="Create Service Request" onSubmit={submitRequest} fields={["title", "category", "requester", "priority", "location", "description"]} />
+      <ActionForm title="Create Service Request" onSubmit={submitRequest} fields={["title", "category", "requester", "priority", "location", "description"]} saving={saving} />
     </section>
   );
 }
@@ -479,10 +514,17 @@ function CellValue({ value }: { value: any }) {
   return String(value);
 }
 
-function ActionForm({ title, fields, onSubmit }: { title: string; fields: string[]; onSubmit: (formData: FormData) => void }) {
+function ActionForm({ title, fields, onSubmit, saving }: { title: string; fields: string[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    form.reset();
+  }
+
   return (
     <form
-      action={onSubmit}
+      onSubmit={handleSubmit}
       className="rounded-lg border border-white/80 bg-white p-5 shadow-lift"
     >
       <div className="mb-4 flex items-center gap-3">
@@ -509,9 +551,9 @@ function ActionForm({ title, fields, onSubmit }: { title: string; fields: string
             )}
           </label>
         ))}
-        <button className="mt-2 flex h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 font-black text-white">
+        <button disabled={saving} className="mt-2 flex h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
           <Plus size={18} />
-          Submit
+          {saving ? "Saving..." : "Submit"}
         </button>
       </div>
     </form>

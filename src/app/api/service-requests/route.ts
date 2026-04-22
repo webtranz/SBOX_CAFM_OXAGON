@@ -20,20 +20,29 @@ const slaByPriority = {
 };
 
 export async function POST(request: Request) {
-  const input = schema.parse(await request.json());
-  const count = await prisma.serviceRequest.count();
-  const slaHours = slaByPriority[input.priority];
+  try {
+    const input = schema.parse(await request.json());
+    const count = await prisma.serviceRequest.count();
+    const slaHours = slaByPriority[input.priority];
 
-  const created = await prisma.serviceRequest.create({
-    data: {
-      ...input,
-      channel: "Web Portal",
-      ticketNo: `SR-${String(count + 24001).padStart(5, "0")}`,
-      slaHours,
-      dueAt: addHours(new Date(), slaHours),
-      status: input.priority === "CRITICAL" ? "TRIAGED" : "NEW",
-    },
-  });
+    const created = await prisma.serviceRequest.create({
+      data: {
+        ...input,
+        channel: "Web Portal",
+        ticketNo: `SR-${String(count + 24001).padStart(5, "0")}`,
+        slaHours,
+        dueAt: addHours(new Date(), slaHours),
+        status: input.priority === "CRITICAL" ? "TRIAGED" : "NEW",
+      },
+    });
 
-  return NextResponse.json(created, { status: 201 });
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        message: error instanceof Error ? error.message : "Unable to create service request",
+      },
+      { status: 500 },
+    );
+  }
 }

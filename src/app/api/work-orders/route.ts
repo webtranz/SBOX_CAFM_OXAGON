@@ -19,30 +19,39 @@ const dueHours = {
 };
 
 export async function POST(request: Request) {
-  const input = schema.parse(await request.json());
-  const [count, asset, technician] = await Promise.all([
-    prisma.workOrder.count(),
-    input.assetTag ? prisma.asset.findUnique({ where: { tag: input.assetTag } }) : null,
-    prisma.user.findFirst({ where: { role: "Technician" } }),
-  ]);
+  try {
+    const input = schema.parse(await request.json());
+    const [count, asset, technician] = await Promise.all([
+      prisma.workOrder.count(),
+      input.assetTag ? prisma.asset.findUnique({ where: { tag: input.assetTag } }) : null,
+      prisma.user.findFirst({ where: { role: "Technician" } }),
+    ]);
 
-  const created = await prisma.workOrder.create({
-    data: {
-      woNo: `WO-${String(count + 81001).padStart(5, "0")}`,
-      title: input.title,
-      type: input.type,
-      priority: input.priority,
-      status: "ASSIGNED",
-      assetId: asset?.id,
-      assignedToId: technician?.id,
-      plannedStart: new Date(),
-      dueAt: addHours(new Date(), dueHours[input.priority]),
-      estimatedHours: input.priority === "CRITICAL" ? 2 : 4,
-      cost: 0,
-      jobPlan: input.jobPlan,
-      safetyNotes: "Supervisor must verify permits, isolation and access requirements before work starts.",
-    },
-  });
+    const created = await prisma.workOrder.create({
+      data: {
+        woNo: `WO-${String(count + 81001).padStart(5, "0")}`,
+        title: input.title,
+        type: input.type,
+        priority: input.priority,
+        status: "ASSIGNED",
+        assetId: asset?.id,
+        assignedToId: technician?.id,
+        plannedStart: new Date(),
+        dueAt: addHours(new Date(), dueHours[input.priority]),
+        estimatedHours: input.priority === "CRITICAL" ? 2 : 4,
+        cost: 0,
+        jobPlan: input.jobPlan,
+        safetyNotes: "Supervisor must verify permits, isolation and access requirements before work starts.",
+      },
+    });
 
-  return NextResponse.json(created, { status: 201 });
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        message: error instanceof Error ? error.message : "Unable to create work order",
+      },
+      { status: 500 },
+    );
+  }
 }
