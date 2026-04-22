@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { addHours } from "date-fns";
+import { apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -11,6 +12,7 @@ const schema = z.object({
   assignedTeamCode: z.string().optional(),
   requester: z.string().min(2),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  status: z.enum(["NEW", "TRIAGED", "ASSIGNED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CLOSED"]),
   location: z.string().min(2),
   description: z.string().min(3),
 });
@@ -22,30 +24,32 @@ const slaByPriority = {
   CRITICAL: 4,
 };
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const input = schema.parse(await request.json());
-    const count = await prisma.serviceRequest.count();
     const slaHours = slaByPriority[input.priority];
-
-    const created = await prisma.serviceRequest.create({
+    const updated = await prisma.serviceRequest.update({
+      where: { id },
       data: {
         ...input,
-        channel: "Web Portal",
-        ticketNo: `SR-${String(count + 24001).padStart(5, "0")}`,
         slaHours,
         dueAt: addHours(new Date(), slaHours),
-        status: input.priority === "CRITICAL" ? "TRIAGED" : "NEW",
       },
     });
 
-    return NextResponse.json(created, { status: 201 });
+    return NextResponse.json(updated);
   } catch (error) {
-    return NextResponse.json(
-      {
-        message: error instanceof Error ? error.message : "Unable to create service request",
-      },
-      { status: 500 },
-    );
+    return apiError(error, "Unable to update service request");
+  }
+}
+
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    await prisma.serviceRequest.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return apiError(error, "Unable to delete service request");
   }
 }

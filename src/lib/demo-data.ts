@@ -75,4 +75,10 @@ export const fallbackData = {
     { id: "e1", name: "Adeel Khan", email: "adeel@brightworks.local", companyId: "EMP-001", nationalityType: "Resident", departmentCode: "MEP", siteLocation: "Tower A" },
   ],
   rolePermissions: [],
+  locations: [
+    { id: "loc1", code: "TWA-L18-PLANT", site: "KAFD", zone: "CB", building: "Tower A", floor: "18", room: "Plant Room", type: "Plant", active: true },
+  ],
+  jobPlans: [
+    { id: "jp1", code: "JP-HVAC-FILTER", name: "AHU Filter Replacement", assetType: "HVAC", departmentCode: "MEP", serviceCode: "HVAC-REQ", estimatedHours: 2, priority: "MEDIUM", active: true },
+  ],
 };

@@ -7,8 +7,10 @@ const templates: Record<string, string> = {
   teams: "name,companyIdNumber,departmentCode,service,email,phone\n",
   services: "departmentName,departmentCode,teamCode\n",
   inventory: "sku,name,category,unit,onHand,reorderPoint,unitCost,vendor,location\n",
-  requests: "ticketNo,title,category,requester,channel,priority,status,location,slaHours,description\n",
-  workOrders: "woNo,title,type,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes\n",
+  requests: "ticketNo,title,category,departmentCode,serviceCode,assignedTeamCode,requester,channel,priority,status,location,slaHours,description\n",
+  workOrders: "woNo,title,type,assetType,departmentCode,serviceCode,assignedTeamCode,jobPlanCode,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes\n",
+  locations: "code,site,zone,building,floor,room,type,description\n",
+  jobPlans: "code,name,assetType,departmentCode,serviceCode,estimatedHours,priority,steps,safetyNotes\n",
   inspections: "code,title,area,inspector,risk,score,status,dueAt,findings\n",
 };
 

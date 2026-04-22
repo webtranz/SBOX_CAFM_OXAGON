@@ -225,6 +225,9 @@ model ServiceRequest {
   ticketNo    String     @unique
   title       String
   category    String
+  departmentCode String?
+  serviceCode String?
+  assignedTeamCode String?
   requester   String
   channel     String
   priority    Priority
@@ -243,6 +246,11 @@ model WorkOrder {
   woNo             String          @unique
   title            String
   type             String
+  assetType        String?
+  departmentCode   String?
+  serviceCode      String?
+  assignedTeamCode String?
+  jobPlanCode      String?
   priority         Priority
   status           WorkStatus      @default(NEW)
   assetId          String?
@@ -261,6 +269,35 @@ model WorkOrder {
   inventoryIssues  InventoryIssue[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
+}
+
+model Location {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  site         String
+  zone         String
+  building     String
+  floor        String
+  room         String
+  type         String
+  description  String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model JobPlan {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  assetType    String
+  departmentCode String?
+  serviceCode  String?
+  estimatedHours Decimal @db.Decimal(6, 2)
+  priority     Priority
+  steps        String
+  safetyNotes  String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
 }
 
 model PreventiveMaintenance {

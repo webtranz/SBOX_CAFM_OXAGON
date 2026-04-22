@@ -304,6 +304,37 @@ async function main() {
     ),
   );
 
+  await prisma.location.upsert({
+    where: { code: "KAFD-A-18-PLANT" },
+    update: {},
+    create: {
+      code: "KAFD-A-18-PLANT",
+      site: "King Abdullah Financial District",
+      zone: "CB",
+      building: "Tower A",
+      floor: "18",
+      room: "Plant Room",
+      type: "Plant",
+      description: "Primary MEP plant room for Tower A level 18.",
+    },
+  });
+
+  await prisma.jobPlan.upsert({
+    where: { code: "JP-HVAC-FILTER" },
+    update: {},
+    create: {
+      code: "JP-HVAC-FILTER",
+      name: "AHU Filter Replacement",
+      assetType: "HVAC",
+      departmentCode: "MEP",
+      serviceCode: "HVAC-REQ",
+      estimatedHours: 2,
+      priority: "MEDIUM",
+      steps: "Inspect filter bank, isolate AHU if required, replace filters, clean frame, verify differential pressure and update asset history.",
+      safetyNotes: "Use PPE, check access permit and verify safe access before removing filters.",
+    },
+  });
+
   const inventory = [
     ["FLT-24X24-MERV13", "MERV 13 Filter", "HVAC", "pcs", 34, 50, 45, "Gulf MEP Supplies"],
     ["LED-PNL-60W", "LED Panel 60W", "Electrical", "pcs", 122, 80, 32, "BrightLine Trading"],

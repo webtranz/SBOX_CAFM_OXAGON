@@ -60,6 +60,8 @@ type ConsoleData = {
   departments: any[];
   employees: any[];
   rolePermissions: any[];
+  locations: any[];
+  jobPlans: any[];
 };
 
 const moduleGroups = [
@@ -74,6 +76,7 @@ const moduleGroups = [
     items: [
       { id: "helpdesk", label: "Service Requests", icon: TicketCheck },
       { id: "work", label: "Work Orders", icon: Wrench },
+      { id: "jobPlans", label: "Job Plans", icon: ClipboardCheck },
       { id: "ppm", label: "PPM Planner", icon: CalendarCheck },
     ],
   },
@@ -82,6 +85,7 @@ const moduleGroups = [
     icon: MapPinned,
     items: [
       { id: "command", label: "Facility Report", icon: Gauge },
+      { id: "locations", label: "Locations", icon: MapPinned },
       { id: "reports", label: "Bookings Report", icon: ClipboardCheck },
     ],
   },
@@ -408,8 +412,31 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
               updateAsset={updateAsset}
             />
           )}
-          {active === "work" && <WorkOrders data={records} submitWorkOrder={submitWorkOrder} saving={saving} updateWorkOrder={(id, status) => patchRecord(`/api/work-orders/${id}`, { status }, `Work order marked ${status}.`)} />}
-          {active === "helpdesk" && <Helpdesk requests={records.requests} submitRequest={submitRequest} saving={saving} />}
+          {active === "work" && (
+            <WorkOrders
+              data={records}
+              submitWorkOrder={submitWorkOrder}
+              saving={saving}
+              updateWorkOrder={(id, formData) => patchRecord(`/api/work-orders/${id}`, Object.fromEntries(formData.entries()) as Record<string, string>, "Work order updated by admin.")}
+              updateWorkStatus={(id, status) => patchRecord(`/api/work-orders/${id}`, { status }, `Work order marked ${status}.`)}
+              deleteWorkOrder={(id) => deleteRecord(`/api/work-orders/${id}`, "Work order deleted.")}
+            />
+          )}
+          {active === "helpdesk" && (
+            <Helpdesk
+              requests={records.requests}
+              services={records.services}
+              departments={records.departments}
+              teams={records.teams}
+              locations={records.locations}
+              submitRequest={submitRequest}
+              updateRequest={(id, formData) => patchRecord(`/api/service-requests/${id}`, Object.fromEntries(formData.entries()) as Record<string, string>, "Service request updated by admin.")}
+              deleteRequest={(id) => deleteRecord(`/api/service-requests/${id}`, "Service request deleted.")}
+              saving={saving}
+            />
+          )}
+          {active === "jobPlans" && <JobPlans jobPlans={records.jobPlans} services={records.services} departments={records.departments} saving={saving} submitJobPlan={(formData) => postRecord("/api/job-plans", formData, "Job plan")} />}
+          {active === "locations" && <Locations locations={records.locations} saving={saving} submitLocation={(formData) => postRecord("/api/locations", formData, "Location")} />}
           {active === "ppm" && <Ppm ppms={records.ppms} saving={saving} submitPpm={(formData) => postRecord("/api/ppm", formData, "PPM")} />}
           {active === "inventory" && <Inventory inventory={records.inventory} saving={saving} submitInventory={(formData) => postRecord("/api/inventory", formData, "Inventory item")} />}
           {active === "hse" && <Hse inspections={records.inspections} saving={saving} submitInspection={(formData) => postRecord("/api/inspections", formData, "Inspection")} />}
@@ -855,7 +882,23 @@ function EditField({ label, name, defaultValue, required = false, type = "text" 
   );
 }
 
-function WorkOrders({ data, submitWorkOrder, saving, updateWorkOrder }: { data: ConsoleData; submitWorkOrder: (formData: FormData) => void; saving: boolean; updateWorkOrder: (id: string, status: string) => void }) {
+function WorkOrders({
+  data,
+  submitWorkOrder,
+  saving,
+  updateWorkOrder,
+  updateWorkStatus,
+  deleteWorkOrder,
+}: {
+  data: ConsoleData;
+  submitWorkOrder: (formData: FormData) => void;
+  saving: boolean;
+  updateWorkOrder: (id: string, formData: FormData) => void;
+  updateWorkStatus: (id: string, status: string) => void;
+  deleteWorkOrder: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState<any | null>(null);
+
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Work Order Control" icon={Wrench}>
@@ -865,6 +908,8 @@ function WorkOrders({ data, submitWorkOrder, saving, updateWorkOrder }: { data: 
             ["woNo", "WO"],
             ["title", "Title"],
             ["type", "Type"],
+            ["assetType", "Asset Type"],
+            ["assignedTeamCode", "Team"],
             ["priority", "Priority"],
             ["status", "Status"],
             ["cost", "Cost"],
@@ -875,19 +920,46 @@ function WorkOrders({ data, submitWorkOrder, saving, updateWorkOrder }: { data: 
             <div key={work.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-3">
               <span className="text-sm font-bold">{work.woNo}</span>
               <div className="flex gap-2">
-                <button disabled={saving} onClick={() => updateWorkOrder(work.id, "IN_PROGRESS")} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Start</button>
-                <button disabled={saving} onClick={() => updateWorkOrder(work.id, "COMPLETED")} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Complete</button>
+                <button disabled={saving} onClick={() => setEditing(work)} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Edit</button>
+                <button disabled={saving} onClick={() => updateWorkStatus(work.id, "IN_PROGRESS")} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Start</button>
+                <button disabled={saving} onClick={() => updateWorkStatus(work.id, "COMPLETED")} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Complete</button>
+                <button disabled={saving} onClick={() => deleteWorkOrder(work.id)} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Delete</button>
               </div>
             </div>
           ))}
         </div>
       </Panel>
-      <ActionForm title="Generate Work Order" onSubmit={submitWorkOrder} fields={["title", "type", "priority", "assetTag", "jobPlan"]} saving={saving} />
+      <div className="space-y-5">
+        <WorkOrderForm title="Generate Work Order" data={data} onSubmit={submitWorkOrder} saving={saving} />
+        {editing && <WorkOrderForm title={`Edit ${editing.woNo}`} data={data} work={editing} onSubmit={(formData) => updateWorkOrder(editing.id, formData)} saving={saving} />}
+      </div>
     </section>
   );
 }
 
-function Helpdesk({ requests, submitRequest, saving }: { requests: any[]; submitRequest: (formData: FormData) => void; saving: boolean }) {
+function Helpdesk({
+  requests,
+  services,
+  departments,
+  teams,
+  locations,
+  submitRequest,
+  updateRequest,
+  deleteRequest,
+  saving,
+}: {
+  requests: any[];
+  services: any[];
+  departments: any[];
+  teams: any[];
+  locations: any[];
+  submitRequest: (formData: FormData) => void;
+  updateRequest: (id: string, formData: FormData) => void;
+  deleteRequest: (id: string) => void;
+  saving: boolean;
+}) {
+  const [editing, setEditing] = useState<any | null>(null);
+
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Helpdesk & SLA Triage" icon={TicketCheck}>
@@ -897,15 +969,138 @@ function Helpdesk({ requests, submitRequest, saving }: { requests: any[]; submit
             ["ticketNo", "Ticket"],
             ["title", "Request"],
             ["category", "Category"],
+            ["departmentCode", "Dept"],
+            ["serviceCode", "Service"],
+            ["assignedTeamCode", "Team"],
             ["requester", "Requester"],
             ["priority", "Priority"],
             ["status", "Status"],
             ["location", "Location"],
           ]}
         />
+        <div className="mt-4 grid gap-2">
+          {requests.slice(0, 8).map((request) => (
+            <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-3">
+              <span className="text-sm font-bold">{request.ticketNo} / {request.title}</span>
+              <div className="flex gap-2">
+                <button disabled={saving} onClick={() => setEditing(request)} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Edit</button>
+                <button disabled={saving} onClick={() => deleteRequest(request.id)} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </Panel>
-      <ActionForm title="Create Service Request" onSubmit={submitRequest} fields={["title", "category", "requester", "priority", "location", "description"]} saving={saving} />
+      <div className="space-y-5">
+        <ServiceRequestForm title="Create Service Request" services={services} departments={departments} teams={teams} locations={locations} onSubmit={submitRequest} saving={saving} />
+        {editing && <ServiceRequestForm title={`Edit ${editing.ticketNo}`} request={editing} services={services} departments={departments} teams={teams} locations={locations} onSubmit={(formData) => updateRequest(editing.id, formData)} saving={saving} />}
+      </div>
     </section>
+  );
+}
+
+function ServiceRequestForm({ title, request, services, departments, teams, locations, onSubmit, saving }: { title: string; request?: any; services: any[]; departments: any[]; teams: any[]; locations: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    if (!request) form.reset();
+  }
+
+  const locationOptions = locations.map((location) => `${location.site} / ${location.building} / ${location.floor} / ${location.room}`);
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">{title}</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="title" defaultValue={request?.title ?? ""} required placeholder="Request title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="departmentCode" defaultValue={request?.departmentCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select department</option>
+          {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
+        </select>
+        <select name="serviceCode" defaultValue={request?.serviceCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select service</option>
+          {services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
+        </select>
+        <select name="assignedTeamCode" defaultValue={request?.assignedTeamCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Assign team</option>
+          {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
+        </select>
+        <input name="category" defaultValue={request?.category ?? ""} required placeholder="Category" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="requester" defaultValue={request?.requester ?? ""} required placeholder="Requester" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="priority" defaultValue={request?.priority ?? "MEDIUM"} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
+        </select>
+        {request && (
+          <select name="status" defaultValue={request.status} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <option>NEW</option><option>TRIAGED</option><option>ASSIGNED</option><option>IN_PROGRESS</option><option>ON_HOLD</option><option>COMPLETED</option><option>CLOSED</option>
+          </select>
+        )}
+        {!request && <input type="hidden" name="status" value="NEW" />}
+        <select name="location" defaultValue={request?.location ?? ""} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select location</option>
+          {locationOptions.map((location) => <option key={location}>{location}</option>)}
+        </select>
+        <textarea name="description" defaultValue={request?.description ?? ""} required placeholder="Description" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Request"}</button>
+      </div>
+    </form>
+  );
+}
+
+function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string; work?: any; data: ConsoleData; onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    if (!work) form.reset();
+  }
+
+  const assetTypes = Array.from(new Set(data.assets.map((asset) => asset.assetGroup || asset.category).filter(Boolean)));
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">{title}</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="title" defaultValue={work?.title ?? ""} required placeholder="Title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="type" defaultValue={work?.type ?? ""} required placeholder="Work type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="assetType" defaultValue={work?.assetType ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select asset type</option>
+          {assetTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+        </select>
+        <select name="assetTag" defaultValue={work?.asset?.tag ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select asset</option>
+          {data.assets.map((asset) => <option key={asset.id} value={asset.tag}>{asset.tag} - {asset.assetDescription ?? asset.name}</option>)}
+        </select>
+        <select name="departmentCode" defaultValue={work?.departmentCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select department</option>
+          {data.departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
+        </select>
+        <select name="serviceCode" defaultValue={work?.serviceCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select service</option>
+          {data.services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
+        </select>
+        <select name="assignedTeamCode" defaultValue={work?.assignedTeamCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Assign service team</option>
+          {data.teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
+        </select>
+        <select name="assignedToEmail" defaultValue={work?.assignedTo?.email ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Assign user</option>
+          {data.users.map((user) => <option key={user.id} value={user.email}>{user.name} - {user.role}</option>)}
+        </select>
+        <select name="jobPlanCode" defaultValue={work?.jobPlanCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select job plan</option>
+          {data.jobPlans.map((plan) => <option key={plan.id} value={plan.code}>{plan.code} - {plan.name}</option>)}
+        </select>
+        <select name="priority" defaultValue={work?.priority ?? "MEDIUM"} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
+        </select>
+        {work && <select name="status" defaultValue={work.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon"><option>NEW</option><option>TRIAGED</option><option>ASSIGNED</option><option>IN_PROGRESS</option><option>ON_HOLD</option><option>COMPLETED</option><option>CLOSED</option></select>}
+        <textarea name="jobPlan" defaultValue={work?.jobPlan ?? ""} required placeholder="Job plan / work steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        <textarea name="safetyNotes" defaultValue={work?.safetyNotes ?? ""} placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        {work && <div className="grid grid-cols-2 gap-3"><input name="estimatedHours" type="number" defaultValue={work.estimatedHours ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" /><input name="cost" type="number" defaultValue={work.cost ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" /></div>}
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Work Order"}</button>
+      </div>
+    </form>
   );
 }
 
@@ -1177,6 +1372,57 @@ function ServiceForm({ teams, departments, onSubmit, saving }: { teams: any[]; d
   );
 }
 
+function Locations({ locations, submitLocation, saving }: { locations: any[]; submitLocation: (formData: FormData) => void; saving: boolean }) {
+  return (
+    <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+      <Panel title="Location Register" icon={MapPinned}>
+        <DataTable rows={locations} columns={[["code", "Code"], ["site", "Site"], ["zone", "Zone"], ["building", "Building"], ["floor", "Floor"], ["room", "Room"], ["type", "Type"], ["active", "Active"]]} />
+      </Panel>
+      <ActionForm title="Add Location" onSubmit={submitLocation} fields={["code", "site", "zone", "building", "floor", "room", "type", "description"]} saving={saving} />
+    </section>
+  );
+}
+
+function JobPlans({ jobPlans, services, departments, submitJobPlan, saving }: { jobPlans: any[]; services: any[]; departments: any[]; submitJobPlan: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await submitJobPlan(new FormData(form));
+    form.reset();
+  }
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+      <Panel title="Job Plans" icon={ClipboardCheck}>
+        <DataTable rows={jobPlans} columns={[["code", "Code"], ["name", "Name"], ["assetType", "Asset Type"], ["departmentCode", "Dept"], ["serviceCode", "Service"], ["estimatedHours", "Hours"], ["priority", "Priority"], ["active", "Active"]]} />
+      </Panel>
+      <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+        <h3 className="text-xl font-black">Add Job Plan</h3>
+        <div className="mt-4 grid gap-3">
+          <input name="code" required placeholder="Job plan code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="name" required placeholder="Job plan name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="assetType" required placeholder="Specific asset type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <option value="">Select department</option>
+            {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
+          </select>
+          <select name="serviceCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <option value="">Select service</option>
+            {services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
+          </select>
+          <input name="estimatedHours" type="number" required placeholder="Estimated hours" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <select name="priority" defaultValue="MEDIUM" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
+          </select>
+          <textarea name="steps" required placeholder="Job plan steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+          <textarea name="safetyNotes" placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+          <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Job Plan"}</button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function BulkUpload({ saving, onSubmit }: { saving: boolean; onSubmit: (formData: FormData) => void }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1196,6 +1442,8 @@ function BulkUpload({ saving, onSubmit }: { saving: boolean; onSubmit: (formData
               <option value="inventory">Inventory</option>
               <option value="requests">Service Requests</option>
               <option value="workOrders">Work Orders</option>
+              <option value="jobPlans">Job Plans</option>
+              <option value="locations">Locations</option>
               <option value="inspections">Inspections</option>
               <option value="teams">Teams</option>
               <option value="services">Services</option>
@@ -1225,7 +1473,9 @@ function Templates() {
     ["services", "Services", "departmentName,departmentCode,teamCode"],
     ["inventory", "Inventory", "sku,name,category,unit,onHand,reorderPoint,unitCost,vendor,location"],
     ["requests", "Requests", "ticketNo,title,category,requester,channel,priority,status,location,slaHours,description"],
-    ["workOrders", "Work Orders", "woNo,title,type,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes"],
+    ["workOrders", "Work Orders", "woNo,title,type,assetType,departmentCode,serviceCode,assignedTeamCode,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes"],
+    ["jobPlans", "Job Plans", "code,name,assetType,departmentCode,serviceCode,estimatedHours,priority,steps,safetyNotes"],
+    ["locations", "Locations", "code,site,zone,building,floor,room,type,description"],
     ["inspections", "Inspections", "code,title,area,inspector,risk,score,status,dueAt,findings"],
   ];
 

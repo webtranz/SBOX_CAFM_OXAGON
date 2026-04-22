@@ -46,6 +46,8 @@ async function importRow(module: string, row: Row) {
   if (module === "employees") return importEmployee(row);
   if (module === "categories") return importCategory(row);
   if (module === "inspections") return importInspection(row);
+  if (module === "locations") return importLocation(row);
+  if (module === "jobPlans") return importJobPlan(row);
   throw new Error(`Unsupported module: ${module}`);
 }
 
@@ -179,6 +181,9 @@ async function importRequest(row: Row) {
       ticketNo: row.ticketNo || `SR-${String(count + 24001).padStart(5, "0")}`,
       title: required(row, "title"),
       category: row.category || "General",
+      departmentCode: row.departmentCode || "",
+      serviceCode: row.serviceCode || "",
+      assignedTeamCode: row.assignedTeamCode || "",
       requester: row.requester || "Bulk Upload",
       channel: row.channel || "Bulk Upload",
       priority: priority(row.priority),
@@ -199,6 +204,11 @@ async function importWorkOrder(row: Row) {
       woNo: row.woNo || `WO-${String(count + 81001).padStart(5, "0")}`,
       title: required(row, "title"),
       type: row.type || "Corrective",
+      assetType: row.assetType || asset?.assetGroup || asset?.category || "",
+      departmentCode: row.departmentCode || "",
+      serviceCode: row.serviceCode || "",
+      assignedTeamCode: row.assignedTeamCode || "",
+      jobPlanCode: row.jobPlanCode || "",
       priority: priority(row.priority),
       status: workStatus(row.status, "ASSIGNED"),
       assetId: asset?.id,
@@ -279,6 +289,22 @@ async function importInspection(row: Row) {
   });
 }
 
+async function importLocation(row: Row) {
+  await prisma.location.upsert({
+    where: { code: required(row, "code") },
+    update: locationPayload(row),
+    create: { code: required(row, "code"), ...locationPayload(row) },
+  });
+}
+
+async function importJobPlan(row: Row) {
+  await prisma.jobPlan.upsert({
+    where: { code: required(row, "code") },
+    update: jobPlanPayload(row),
+    create: { code: required(row, "code"), ...jobPlanPayload(row) },
+  });
+}
+
 function teamPayload(row: Row) {
   return {
     name: required(row, "name"),
@@ -320,6 +346,31 @@ function employeePayload(row: Row) {
     nationalityType: row.nationalityType || "Unspecified",
     departmentCode: row.departmentCode || "UNASSIGNED",
     siteLocation: row.siteLocation || "Unassigned",
+  };
+}
+
+function locationPayload(row: Row) {
+  return {
+    site: required(row, "site"),
+    zone: row.zone || "Unassigned",
+    building: row.building || row.BLDG || "Unassigned",
+    floor: row.floor || row.FLOOR || "Unassigned",
+    room: row.room || row.ROOM || "Unassigned",
+    type: row.type || "Facility Location",
+    description: row.description || "",
+  };
+}
+
+function jobPlanPayload(row: Row) {
+  return {
+    name: required(row, "name"),
+    assetType: required(row, "assetType"),
+    departmentCode: row.departmentCode || "",
+    serviceCode: row.serviceCode || "",
+    estimatedHours: number(row.estimatedHours, 2),
+    priority: priority(row.priority),
+    steps: row.steps || row.jobPlan || "Inspect, execute, test and close.",
+    safetyNotes: row.safetyNotes || "",
   };
 }
 

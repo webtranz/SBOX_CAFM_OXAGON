@@ -7,7 +7,7 @@ export async function getOperatingData() {
   }
 
   try {
-    const [sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions] = await Promise.all([
+    const [sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, locations, jobPlans] = await Promise.all([
       prisma.site.findMany({ orderBy: { name: "asc" } }),
       prisma.asset.findMany({
         orderBy: [{ tag: "asc" }],
@@ -20,7 +20,7 @@ export async function getOperatingData() {
       prisma.serviceRequest.findMany({ orderBy: { createdAt: "desc" } }),
       prisma.workOrder.findMany({
         orderBy: { dueAt: "asc" },
-        include: { assignedTo: { select: { name: true } }, asset: { select: { tag: true } } },
+        include: { assignedTo: { select: { name: true, email: true } }, asset: { select: { tag: true } } },
       }),
       prisma.inventoryItem.findMany({ orderBy: { sku: "asc" } }),
       prisma.inspection.findMany({ orderBy: { dueAt: "asc" } }),
@@ -34,9 +34,11 @@ export async function getOperatingData() {
       prisma.department.findMany({ orderBy: { code: "asc" } }),
       prisma.employee.findMany({ orderBy: { name: "asc" } }),
       prisma.rolePermission.findMany({ include: { permission: true }, orderBy: { role: "asc" } }),
+      prisma.location.findMany({ orderBy: [{ site: "asc" }, { building: "asc" }, { floor: "asc" }, { room: "asc" }] }),
+      prisma.jobPlan.findMany({ orderBy: { code: "asc" } }),
     ]);
 
-    return { sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, live: true };
+    return { sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, live: true };
   } catch {
     return { ...fallbackData, live: false };
   }
