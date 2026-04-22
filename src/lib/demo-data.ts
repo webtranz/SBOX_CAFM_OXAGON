@@ -75,6 +75,11 @@ export const fallbackData = {
     { id: "e1", name: "Adeel Khan", email: "adeel@brightworks.local", companyId: "EMP-001", nationalityType: "Resident", departmentCode: "MEP", siteLocation: "Tower A" },
   ],
   rolePermissions: [],
+  roles: [
+    { id: "role-admin", name: "Admin", description: "Full system administration", standard: true },
+    { id: "role-supervisor", name: "Supervisor", description: "Assign and supervise work", standard: true },
+    { id: "role-technician", name: "Technician", description: "Execute and update assigned work", standard: true },
+  ],
   locations: [
     { id: "loc1", code: "TWA-L18-PLANT", site: "KAFD", zone: "CB", building: "Tower A", floor: "18", room: "Plant Room", type: "Plant", active: true },
   ],

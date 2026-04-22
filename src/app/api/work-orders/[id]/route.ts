@@ -19,6 +19,13 @@ const schema = z.object({
   safetyNotes: z.string().optional(),
   estimatedHours: z.coerce.number().optional(),
   cost: z.coerce.number().optional(),
+  responseAt: z.string().optional(),
+  resolutionAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  photoUrls: z.string().optional(),
+  assetsUsed: z.string().optional(),
+  inventoryUsed: z.string().optional(),
+  supervisorRequest: z.string().optional(),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -47,6 +54,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         safetyNotes: input.safetyNotes,
         estimatedHours: input.estimatedHours,
         cost: input.cost,
+        responseAt: input.responseAt ? new Date(input.responseAt) : input.status === "IN_PROGRESS" ? new Date() : undefined,
+        resolutionAt: input.resolutionAt ? new Date(input.resolutionAt) : input.status === "COMPLETED" ? new Date() : undefined,
+        finishedAt: input.finishedAt ? new Date(input.finishedAt) : input.status === "CLOSED" ? new Date() : undefined,
+        photoUrls: input.photoUrls,
+        assetsUsed: input.assetsUsed,
+        inventoryUsed: input.inventoryUsed,
+        supervisorRequest: input.supervisorRequest,
         actualHours: input.status && ["COMPLETED", "CLOSED"].includes(input.status) ? 4 : undefined,
       },
     });

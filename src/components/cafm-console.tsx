@@ -62,6 +62,7 @@ type ConsoleData = {
   rolePermissions: any[];
   locations: any[];
   jobPlans: any[];
+  roles: any[];
 };
 
 const moduleGroups = [
@@ -290,6 +291,15 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
     setSaving(false);
   }
 
+  async function convertRequestToWorkOrder(id: string) {
+    setSaving(true);
+    const response = await fetch(`/api/service-requests/${id}/convert-work-order`, { method: "POST" });
+    const result = await response.json();
+    setToast(response.ok ? `Work order ${result.woNo} created from request.` : cleanMessage(result.message ?? "Conversion failed."));
+    if (response.ok) await refreshData();
+    setSaving(false);
+  }
+
   async function logout() {
     await fetch("/api/logout", { method: "POST" });
     window.location.href = "/login";
@@ -432,6 +442,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
               submitRequest={submitRequest}
               updateRequest={(id, formData) => patchRecord(`/api/service-requests/${id}`, Object.fromEntries(formData.entries()) as Record<string, string>, "Service request updated by admin.")}
               deleteRequest={(id) => deleteRecord(`/api/service-requests/${id}`, "Service request deleted.")}
+              convertRequest={convertRequestToWorkOrder}
               saving={saving}
             />
           )}
@@ -460,10 +471,12 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
             <UsersRoles
               users={records.users}
               teams={records.teams}
+              roles={records.roles}
               permissions={records.permissions}
               rolePermissions={records.rolePermissions}
               saving={saving}
               submitUser={(formData) => postRecord("/api/users", formData, "User")}
+              submitRole={(formData) => postRecord("/api/roles", formData, "Custom role")}
               updateUser={(id, formData) => patchRecord(`/api/users/${id}`, Object.fromEntries(formData.entries()) as Record<string, string>, "User updated.")}
               deleteUser={(id) => deleteRecord(`/api/users/${id}`, "User deleted.")}
               refreshData={refreshData}
@@ -946,6 +959,7 @@ function Helpdesk({
   submitRequest,
   updateRequest,
   deleteRequest,
+  convertRequest,
   saving,
 }: {
   requests: any[];
@@ -956,6 +970,7 @@ function Helpdesk({
   submitRequest: (formData: FormData) => void;
   updateRequest: (id: string, formData: FormData) => void;
   deleteRequest: (id: string) => void;
+  convertRequest: (id: string) => void;
   saving: boolean;
 }) {
   const [editing, setEditing] = useState<any | null>(null);
@@ -972,6 +987,7 @@ function Helpdesk({
             ["departmentCode", "Dept"],
             ["serviceCode", "Service"],
             ["assignedTeamCode", "Team"],
+            ["assignedSupervisorEmail", "Supervisor"],
             ["requester", "Requester"],
             ["priority", "Priority"],
             ["status", "Status"],
@@ -984,6 +1000,7 @@ function Helpdesk({
               <span className="text-sm font-bold">{request.ticketNo} / {request.title}</span>
               <div className="flex gap-2">
                 <button disabled={saving} onClick={() => setEditing(request)} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Edit</button>
+                <button disabled={saving || request.workOrder} onClick={() => convertRequest(request.id)} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Create WO</button>
                 <button disabled={saving} onClick={() => deleteRequest(request.id)} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Delete</button>
               </div>
             </div>
@@ -1097,6 +1114,18 @@ function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string;
         {work && <select name="status" defaultValue={work.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon"><option>NEW</option><option>TRIAGED</option><option>ASSIGNED</option><option>IN_PROGRESS</option><option>ON_HOLD</option><option>COMPLETED</option><option>CLOSED</option></select>}
         <textarea name="jobPlan" defaultValue={work?.jobPlan ?? ""} required placeholder="Job plan / work steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <textarea name="safetyNotes" defaultValue={work?.safetyNotes ?? ""} placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        {work && (
+          <div className="grid gap-3 rounded-lg bg-slate-50 p-3">
+            <p className="text-sm font-black text-slate-700">Team Member Update</p>
+            <input name="responseAt" type="datetime-local" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+            <input name="resolutionAt" type="datetime-local" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+            <input name="finishedAt" type="datetime-local" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+            <textarea name="photoUrls" defaultValue={work.photoUrls ?? ""} placeholder="Picture links / uploaded evidence URLs" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+            <textarea name="assetsUsed" defaultValue={work.assetsUsed ?? ""} placeholder="Assets added or used" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+            <textarea name="inventoryUsed" defaultValue={work.inventoryUsed ?? ""} placeholder="Inventory/spares used" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+            <textarea name="supervisorRequest" defaultValue={work.supervisorRequest ?? ""} placeholder="Request from supervisor / support needed" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+          </div>
+        )}
         {work && <div className="grid grid-cols-2 gap-3"><input name="estimatedHours" type="number" defaultValue={work.estimatedHours ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" /><input name="cost" type="number" defaultValue={work.cost ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" /></div>}
         <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Work Order"}</button>
       </div>
@@ -1493,9 +1522,11 @@ function Templates() {
 function UsersRoles({
   users,
   teams,
+  roles,
   permissions,
   rolePermissions,
   submitUser,
+  submitRole,
   updateUser,
   deleteUser,
   saveRolePermissions,
@@ -1504,9 +1535,11 @@ function UsersRoles({
 }: {
   users: any[];
   teams: any[];
+  roles: any[];
   permissions: any[];
   rolePermissions: any[];
   submitUser: (formData: FormData) => void;
+  submitRole: (formData: FormData) => void;
   updateUser: (id: string, formData: FormData) => void;
   deleteUser: (id: string) => void;
   saveRolePermissions: (role: string, permissionCodes: string[]) => void;
@@ -1556,12 +1589,7 @@ function UsersRoles({
         <Panel title="Permissions Matrix" icon={ShieldCheck}>
           <div className="mb-4 flex flex-wrap gap-3">
             <select value={role} onChange={(event) => changeRole(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3">
-              <option>Admin</option>
-              <option>Facility Manager</option>
-              <option>Supervisor</option>
-              <option>Technician</option>
-              <option>Helpdesk</option>
-              <option>Viewer</option>
+              {roleOptions(roles).map((item) => <option key={item}>{item}</option>)}
             </select>
             <button onClick={() => saveRolePermissions(role, selectedPermissions)} className="rounded-lg bg-ink px-4 py-2 text-sm font-black text-white">Save Permissions</button>
           </div>
@@ -1579,14 +1607,39 @@ function UsersRoles({
         </Panel>
       </div>
       <div className="space-y-5">
-        <UserForm title="Create User" teams={teams} onSubmit={submitUser} saving={saving} />
-        {editingUser && <UserForm title="Edit User" user={editingUser} teams={teams} onSubmit={(formData) => updateUser(editingUser.id, formData)} saving={saving} />}
+        <RoleForm onSubmit={submitRole} saving={saving} />
+        <UserForm title="Create User" teams={teams} roles={roles} onSubmit={submitUser} saving={saving} />
+        {editingUser && <UserForm title="Edit User" user={editingUser} teams={teams} roles={roles} onSubmit={(formData) => updateUser(editingUser.id, formData)} saving={saving} />}
       </div>
     </section>
   );
 }
 
-function UserForm({ title, user, teams, onSubmit, saving }: { title: string; user?: any; teams: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+function RoleForm({ onSubmit, saving }: { onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(new FormData(event.currentTarget));
+    event.currentTarget.reset();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">Create Custom Role</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="name" required placeholder="Role name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <textarea name="description" placeholder="Role purpose and access scope" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Create Role"}</button>
+      </div>
+    </form>
+  );
+}
+
+function roleOptions(roles: any[]) {
+  const defaults = ["Admin", "Facility Manager", "Supervisor", "Technician", "Helpdesk", "Viewer"];
+  return Array.from(new Set([...defaults, ...roles.map((role) => role.name)]));
+}
+
+function UserForm({ title, user, teams, roles, onSubmit, saving }: { title: string; user?: any; teams: any[]; roles: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await onSubmit(new FormData(event.currentTarget));
@@ -1603,12 +1656,7 @@ function UserForm({ title, user, teams, onSubmit, saving }: { title: string; use
         <input name="email" defaultValue={user?.email ?? ""} required type="email" placeholder="Email" className={cls} />
         <input name="password" required={!user} type="password" placeholder={user ? "New password optional" : "Password"} className={cls} />
         <select name="role" defaultValue={user?.role ?? "Technician"} required className={cls}>
-          <option>Admin</option>
-          <option>Facility Manager</option>
-          <option>Supervisor</option>
-          <option>Technician</option>
-          <option>Helpdesk</option>
-          <option>Viewer</option>
+          {roleOptions(roles).map((role) => <option key={role}>{role}</option>)}
         </select>
         <input name="department" defaultValue={user?.department ?? ""} required placeholder="Department" className={cls} />
         <select name="teamCode" defaultValue={user?.team?.code ?? ""} className={cls}>

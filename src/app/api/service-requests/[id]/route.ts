@@ -29,10 +29,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { id } = await params;
     const input = schema.parse(await request.json());
     const slaHours = slaByPriority[input.priority];
+    const supervisor = input.departmentCode
+      ? await prisma.user.findFirst({ where: { role: { contains: "Supervisor", mode: "insensitive" }, department: input.departmentCode } })
+      : null;
     const updated = await prisma.serviceRequest.update({
       where: { id },
       data: {
         ...input,
+        assignedSupervisorEmail: supervisor?.email || null,
         slaHours,
         dueAt: addHours(new Date(), slaHours),
       },

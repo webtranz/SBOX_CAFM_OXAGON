@@ -21,11 +21,32 @@ async function main() {
     },
   });
 
+  const standardRoles = [
+    ["Admin", "Full system administration"],
+    ["Facility Manager", "Portfolio operations, reporting and governance"],
+    ["Supervisor", "Department/service supervision and work assignment"],
+    ["Technician", "Assigned work execution, status, time, photos and material usage"],
+    ["Helpdesk", "Request intake, triage and communication"],
+    ["Viewer", "Read-only operational visibility"],
+  ] as const;
+
+  for (const [name, description] of standardRoles) {
+    await prisma.role.upsert({
+      where: { name },
+      update: { description, standard: true },
+      create: { name, description, standard: true },
+    });
+  }
+
   const permissions = [
     ["assets.manage", "Manage Assets", "Assets", "Create, edit, import and view asset history"],
     ["work.manage", "Manage Work Orders", "Work", "Create and update work orders"],
+    ["work.execute", "Execute Work Orders", "Work", "Update status, time, photos, assets and inventory used"],
+    ["requests.manage", "Manage Service Requests", "Helpdesk", "Create, edit, assign and convert requests to work orders"],
+    ["requests.view", "View Service Requests", "Helpdesk", "View assigned service requests"],
     ["ppm.manage", "Manage PPM", "Maintenance", "Create planned preventive maintenance schedules"],
     ["users.manage", "Manage Users", "Administration", "Create users and assign roles"],
+    ["roles.manage", "Manage Roles", "Administration", "Create custom roles and permission sets"],
     ["reports.view", "View Reports", "Reports", "Preview and download reports"],
   ] as const;
 
@@ -40,6 +61,25 @@ async function main() {
       update: {},
       create: { role: "Admin", permissionId: permission.id },
     });
+  }
+
+  const defaultRolePermissions: Record<string, string[]> = {
+    "Facility Manager": ["assets.manage", "work.manage", "requests.manage", "ppm.manage", "reports.view"],
+    Supervisor: ["work.manage", "work.execute", "requests.manage", "requests.view", "reports.view"],
+    Technician: ["work.execute", "requests.view"],
+    Helpdesk: ["requests.manage", "requests.view", "reports.view"],
+    Viewer: ["requests.view", "reports.view"],
+  };
+
+  for (const [role, codes] of Object.entries(defaultRolePermissions)) {
+    const linkedPermissions = await prisma.permission.findMany({ where: { code: { in: codes } } });
+    for (const permission of linkedPermissions) {
+      await prisma.rolePermission.upsert({
+        where: { role_permissionId: { role, permissionId: permission.id } },
+        update: {},
+        create: { role, permissionId: permission.id },
+      });
+    }
   }
 
   const users = await Promise.all(

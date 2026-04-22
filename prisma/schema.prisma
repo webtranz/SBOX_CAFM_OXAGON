@@ -61,6 +61,14 @@ model Permission {
   roleLinks   RolePermission[]
 }
 
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  standard    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
 model Department {
   id          String   @id @default(cuid())
   code        String   @unique
@@ -228,6 +236,7 @@ model ServiceRequest {
   departmentCode String?
   serviceCode String?
   assignedTeamCode String?
+  assignedSupervisorEmail String?
   requester   String
   channel     String
   priority    Priority
@@ -251,6 +260,13 @@ model WorkOrder {
   serviceCode      String?
   assignedTeamCode String?
   jobPlanCode      String?
+  responseAt       DateTime?
+  resolutionAt     DateTime?
+  finishedAt       DateTime?
+  photoUrls        String?
+  assetsUsed       String?
+  inventoryUsed    String?
+  supervisorRequest String?
   priority         Priority
   status           WorkStatus      @default(NEW)
   assetId          String?

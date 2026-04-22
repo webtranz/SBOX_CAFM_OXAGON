@@ -27,10 +27,14 @@ export async function POST(request: Request) {
     const input = schema.parse(await request.json());
     const count = await prisma.serviceRequest.count();
     const slaHours = slaByPriority[input.priority];
+    const supervisor = input.departmentCode
+      ? await prisma.user.findFirst({ where: { role: { contains: "Supervisor", mode: "insensitive" }, department: input.departmentCode } })
+      : null;
 
     const created = await prisma.serviceRequest.create({
       data: {
         ...input,
+        assignedSupervisorEmail: supervisor?.email || null,
         channel: "Web Portal",
         ticketNo: `SR-${String(count + 24001).padStart(5, "0")}`,
         slaHours,
