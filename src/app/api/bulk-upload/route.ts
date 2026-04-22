@@ -57,21 +57,37 @@ async function firstSite() {
 
 async function importAsset(row: Row) {
   const site = await firstSite();
-  const tag = required(row, "tag");
+  const tag = value(row, "tag", "ASSET NUMBER", "assetNumber");
+  if (!tag) throw new Error("tag or ASSET NUMBER is required");
+  const name = value(row, "name", "Asset Description", "Asset Description ", "assetDescription") || tag;
+  const category = value(row, "category", "Asset Group", "Asset Group ", "assetGroup") || "HVAC";
+  const system = value(row, "system", "Asset Description", "Asset Description ") || category;
+  const floor = value(row, "floor", "FLOOR") || "Unassigned";
+  const room = value(row, "room", "ROOM", "ROOM ") || "Unassigned";
+  const departmentCode = value(row, "departmentCode", "Department") || "";
   const cost = number(row.purchaseCost, 0);
   const asset = await prisma.asset.upsert({
     where: { tag },
     update: {
-      name: required(row, "name"),
-      category: required(row, "category"),
-      system: row.system || row.category || "General",
+      name,
+      category,
+      system,
       criticality: priority(row.criticality),
       status: assetStatus(row.status),
       serialNumber: row.serialNumber || `${tag}-SN`,
+      siteCode: value(row, "siteCode", "SITE"),
+      zone: value(row, "zone", "ZONE"),
+      buildingCode: value(row, "buildingCode", "BLDG"),
+      assetGroup: category,
+      assetDescription: name,
+      additionalDescription: value(row, "additionalDescription", "Additional description", "Additional description "),
+      parentAsset: value(row, "parentAsset", "Parent Asset", "Parent Asset ") || "TOP LEVEL",
+      departmentCode,
+      remarks: value(row, "remarks", "Remarks"),
       manufacturer: row.manufacturer || "Not specified",
       model: row.model || "Not specified",
-      floor: row.floor || "Unassigned",
-      room: row.room || "Unassigned",
+      floor,
+      room,
       warrantyExpiry: date(row.warrantyExpiry, addYears(new Date(), 1)),
       contractRef: row.contractRef || "Not assigned",
       documentationUrl: row.documentationUrl || null,
@@ -83,12 +99,21 @@ async function importAsset(row: Row) {
     },
     create: {
       tag,
-      name: required(row, "name"),
-      category: required(row, "category"),
-      system: row.system || row.category || "General",
+      name,
+      category,
+      system,
       criticality: priority(row.criticality),
       status: assetStatus(row.status),
       serialNumber: row.serialNumber || `${tag}-SN`,
+      siteCode: value(row, "siteCode", "SITE"),
+      zone: value(row, "zone", "ZONE"),
+      buildingCode: value(row, "buildingCode", "BLDG"),
+      assetGroup: category,
+      assetDescription: name,
+      additionalDescription: value(row, "additionalDescription", "Additional description", "Additional description "),
+      parentAsset: value(row, "parentAsset", "Parent Asset", "Parent Asset ") || "TOP LEVEL",
+      departmentCode,
+      remarks: value(row, "remarks", "Remarks"),
       manufacturer: row.manufacturer || "Not specified",
       model: row.model || "Not specified",
       installDate: date(row.installDate, new Date()),
@@ -100,8 +125,8 @@ async function importAsset(row: Row) {
       salvageValue: number(row.salvageValue, Math.round(cost * 0.1)),
       depreciationRate: number(row.depreciationRate, 10),
       conditionScore: number(row.conditionScore, 85),
-      floor: row.floor || "Unassigned",
-      room: row.room || "Unassigned",
+      floor,
+      room,
       qrCode: `CAFM-ASSET:${tag}`,
       siteId: site.id,
       buildingId: site.buildings[0]?.id,
@@ -301,6 +326,14 @@ function employeePayload(row: Row) {
 function required(row: Row, key: string) {
   if (!row[key]) throw new Error(`${key} is required`);
   return row[key];
+}
+
+function value(row: Row, ...keys: string[]) {
+  for (const key of keys) {
+    const found = row[key];
+    if (found !== undefined && found !== null && String(found).trim() !== "") return String(found).trim();
+  }
+  return "";
 }
 
 function number(value: string | undefined, fallback: number) {

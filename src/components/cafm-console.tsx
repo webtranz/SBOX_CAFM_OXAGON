@@ -592,7 +592,7 @@ function Assets({
         <ActionForm
           title="Register Asset"
           onSubmit={submitAsset}
-          fields={["tag", "name", "category", "system", "criticality", "serialNumber", "manufacturer", "model", "floor", "room", "warrantyExpiry", "contractRef", "documentationUrl", "purchaseCost", "salvageValue", "depreciationRate", "conditionScore"]}
+          fields={["siteCode", "zone", "buildingCode", "floor", "room", "assetGroup", "tag", "assetDescription", "additionalDescription", "parentAsset", "departmentCode", "remarks", "name", "category", "system", "criticality", "serialNumber", "manufacturer", "model", "warrantyExpiry", "contractRef", "documentationUrl", "purchaseCost", "salvageValue", "depreciationRate", "conditionScore"]}
           saving={saving}
         />
         {selectedAsset && (
@@ -646,6 +646,10 @@ function AssetIdentity({ asset }: { asset: any }) {
         </div>
         <div className="mt-4 grid gap-2 text-sm text-slate-700">
           <span>Serial: {asset.serialNumber ?? "-"}</span>
+          <span>Site / Zone / Building: {asset.siteCode ?? "-"} / {asset.zone ?? "-"} / {asset.buildingCode ?? "-"}</span>
+          <span>Asset group: {asset.assetGroup ?? "-"}</span>
+          <span>Parent asset: {asset.parentAsset ?? "-"}</span>
+          <span>Department: {asset.departmentCode ?? "-"}</span>
           <span>Warranty: {asset.warrantyExpiry ? new Date(asset.warrantyExpiry).toLocaleDateString() : "-"}</span>
           <span>Contract: {asset.contractRef ?? "-"}</span>
           <span>Book value: ${bookValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
@@ -673,6 +677,17 @@ function AssetEditForm({ asset, saving, onSubmit }: { asset: any; saving: boolea
         <input name="name" defaultValue={textValue(asset.name)} className={fieldClass} required />
         <input name="category" defaultValue={textValue(asset.category)} className={fieldClass} required />
         <input name="system" defaultValue={textValue(asset.system)} className={fieldClass} required />
+        <div className="grid grid-cols-3 gap-3">
+          <input name="siteCode" defaultValue={textValue(asset.siteCode)} className={fieldClass} placeholder="SITE" />
+          <input name="zone" defaultValue={textValue(asset.zone)} className={fieldClass} placeholder="ZONE" />
+          <input name="buildingCode" defaultValue={textValue(asset.buildingCode)} className={fieldClass} placeholder="BLDG" />
+        </div>
+        <input name="assetGroup" defaultValue={textValue(asset.assetGroup)} className={fieldClass} placeholder="Asset Group" />
+        <input name="assetDescription" defaultValue={textValue(asset.assetDescription)} className={fieldClass} placeholder="Asset Description" />
+        <input name="additionalDescription" defaultValue={textValue(asset.additionalDescription)} className={fieldClass} placeholder="Additional description" />
+        <input name="parentAsset" defaultValue={textValue(asset.parentAsset)} className={fieldClass} placeholder="Parent Asset" />
+        <input name="departmentCode" defaultValue={textValue(asset.departmentCode)} className={fieldClass} placeholder="Department" />
+        <input name="remarks" defaultValue={textValue(asset.remarks)} className={fieldClass} placeholder="Remarks" />
         <select name="criticality" defaultValue={asset.criticality} className={fieldClass}>
           <option>LOW</option>
           <option>MEDIUM</option>
@@ -1070,7 +1085,7 @@ function BulkUpload({ saving, onSubmit }: { saving: boolean; onSubmit: (formData
 
 function Templates() {
   const templates = [
-    ["assets", "Assets", "tag,name,category,system,criticality,status,serialNumber,manufacturer,model,floor,room,warrantyExpiry,contractRef,documentationUrl,purchaseCost,salvageValue,depreciationRate,conditionScore"],
+    ["assets", "Assets", "SITE,ZONE,BLDG,FLOOR,ROOM,Asset Group,ASSET NUMBER,Asset Description,Additional description,Parent Asset,Department,Remarks"],
     ["departments", "Departments", "code,name,siteLocation,description"],
     ["employees", "Employees", "name,email,companyId,nationalityType,departmentCode,siteLocation"],
     ["teams", "Teams", "name,companyIdNumber,departmentCode,service,email,phone"],

@@ -175,6 +175,15 @@ model Asset {
   criticality     Priority
   status          AssetStatus  @default(ACTIVE)
   serialNumber    String?
+  siteCode        String?
+  zone            String?
+  buildingCode    String?
+  assetGroup      String?
+  assetDescription String?
+  additionalDescription String?
+  parentAsset     String?
+  departmentCode  String?
+  remarks         String?
   manufacturer    String
   model           String
   installDate     DateTime

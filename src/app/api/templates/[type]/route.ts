@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const templates: Record<string, string> = {
-  assets: "tag,name,category,system,criticality,status,serialNumber,manufacturer,model,floor,room,warrantyExpiry,contractRef,documentationUrl,purchaseCost,salvageValue,depreciationRate,conditionScore\n",
+  assets: "SITE,ZONE,BLDG,FLOOR,ROOM,Asset Group,ASSET NUMBER,Asset Description,Additional description,Parent Asset,Department,Remarks\n",
   departments: "code,name,siteLocation,description\n",
   employees: "name,email,companyId,nationalityType,departmentCode,siteLocation\n",
   teams: "name,companyIdNumber,departmentCode,service,email,phone\n",
