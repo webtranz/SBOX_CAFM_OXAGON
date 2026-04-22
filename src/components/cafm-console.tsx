@@ -75,6 +75,7 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
   const [toast, setToast] = useState("");
   const [health, setHealth] = useState<{ app: string; database: string; message?: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
   useEffect(() => {
     checkHealth();
@@ -151,6 +152,10 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
     setToast(response.ok ? successLabel : result.message ?? "Action failed.");
     if (response.ok) await refreshData();
     setSaving(false);
+  }
+
+  async function updateAsset(id: string, formData: FormData) {
+    await patchRecord(`/api/assets/${id}`, Object.fromEntries(formData.entries()) as Record<string, string>, "Asset updated by admin.");
   }
 
   return (
@@ -241,7 +246,18 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
           </section>
 
           {active === "command" && <CommandCenter data={records} />}
-          {active === "assets" && <Assets assets={filteredAssets} query={query} setQuery={setQuery} saving={saving} submitAsset={(formData) => postRecord("/api/assets", formData, "Asset")} />}
+          {active === "assets" && (
+            <Assets
+              assets={filteredAssets}
+              selectedAssetId={selectedAssetId}
+              setSelectedAssetId={setSelectedAssetId}
+              query={query}
+              setQuery={setQuery}
+              saving={saving}
+              submitAsset={(formData) => postRecord("/api/assets", formData, "Asset")}
+              updateAsset={updateAsset}
+            />
+          )}
           {active === "work" && <WorkOrders data={records} submitWorkOrder={submitWorkOrder} saving={saving} updateWorkOrder={(id, status) => patchRecord(`/api/work-orders/${id}`, { status }, `Work order marked ${status}.`)} />}
           {active === "helpdesk" && <Helpdesk requests={records.requests} submitRequest={submitRequest} saving={saving} />}
           {active === "ppm" && <Ppm />}
@@ -326,29 +342,155 @@ function CommandCenter({ data }: { data: ConsoleData }) {
   );
 }
 
-function Assets({ assets, query, setQuery, submitAsset, saving }: { assets: any[]; query: string; setQuery: (value: string) => void; submitAsset: (formData: FormData) => void; saving: boolean }) {
+function Assets({
+  assets,
+  selectedAssetId,
+  setSelectedAssetId,
+  query,
+  setQuery,
+  submitAsset,
+  updateAsset,
+  saving,
+}: {
+  assets: any[];
+  selectedAssetId: string | null;
+  setSelectedAssetId: (id: string) => void;
+  query: string;
+  setQuery: (value: string) => void;
+  submitAsset: (formData: FormData) => void;
+  updateAsset: (id: string, formData: FormData) => void;
+  saving: boolean;
+}) {
+  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
+
   return (
-    <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+    <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
       <Panel title="Enterprise Asset Register" icon={Building2}>
         <div className="mb-4 flex h-12 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3">
           <Search size={18} className="text-slate-400" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by tag, asset, category or system" className="w-full outline-none" />
         </div>
-        <DataTable
-          rows={assets}
-          columns={[
-            ["tag", "Tag"],
-            ["name", "Asset"],
-            ["category", "Category"],
-            ["system", "System"],
-            ["criticality", "Criticality"],
-            ["status", "Status"],
-            ["conditionScore", "Health"],
-          ]}
-        />
+        <div className="grid gap-3">
+          {assets.map((asset) => (
+            <button
+              key={asset.id}
+              onClick={() => setSelectedAssetId(asset.id)}
+              className={`grid gap-2 rounded-lg border p-4 text-left transition ${selectedAsset?.id === asset.id ? "border-lagoon bg-lagoon/5" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-black">{asset.tag} | {asset.name}</p>
+                  <p className="text-sm text-slate-500">{asset.category} / {asset.system}</p>
+                </div>
+                <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black">{asset.status}</span>
+              </div>
+              <div className="grid gap-2 text-sm text-slate-600 md:grid-cols-4">
+                <span>Building: {asset.building?.name ?? "Unassigned"}</span>
+                <span>Floor: {asset.floor ?? "-"}</span>
+                <span>Room: {asset.room ?? "-"}</span>
+                <span>Health: {asset.conditionScore}%</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </Panel>
-      <ActionForm title="Register Asset" onSubmit={submitAsset} fields={["tag", "name", "category", "system", "criticality", "manufacturer", "model", "purchaseCost", "conditionScore"]} saving={saving} />
+      <div className="space-y-5">
+        {selectedAsset && <AssetIdentity asset={selectedAsset} />}
+        <ActionForm
+          title="Register Asset"
+          onSubmit={submitAsset}
+          fields={["tag", "name", "category", "system", "criticality", "serialNumber", "manufacturer", "model", "floor", "room", "warrantyExpiry", "contractRef", "documentationUrl", "purchaseCost", "salvageValue", "depreciationRate", "conditionScore"]}
+          saving={saving}
+        />
+        {selectedAsset && (
+          <AssetEditForm asset={selectedAsset} saving={saving} onSubmit={(formData) => updateAsset(selectedAsset.id, formData)} />
+        )}
+      </div>
     </section>
+  );
+}
+
+function AssetIdentity({ asset }: { asset: any }) {
+  const bars = String(asset.tag)
+    .split("")
+    .slice(0, 22)
+    .map((char: string, index: number) => ((char.charCodeAt(0) + index) % 4) + 1);
+  const purchase = Number(asset.purchaseCost ?? 0);
+  const salvage = Number(asset.salvageValue ?? 0);
+  const annualRate = Number(asset.depreciationRate ?? 0) / 100;
+  const ageYears = Math.max(0, (Date.now() - new Date(asset.installDate ?? Date.now()).getTime()) / (365 * 24 * 60 * 60 * 1000));
+  const bookValue = Math.max(salvage, purchase - purchase * annualRate * ageYears);
+
+  return (
+    <Panel title="Asset Identification" icon={ClipboardCheck}>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-black uppercase text-slate-500">QR / Barcode Payload</p>
+        <p className="mt-1 break-words font-black text-lagoon">{asset.qrCode ?? `CAFM-ASSET:${asset.tag}`}</p>
+        <div className="mt-4 flex h-20 items-end gap-1 rounded-lg bg-white p-3">
+          {bars.map((width, index) => (
+            <span key={`${asset.tag}-${index}`} className="h-full bg-ink" style={{ width }} />
+          ))}
+        </div>
+        <div className="mt-4 grid gap-2 text-sm text-slate-700">
+          <span>Serial: {asset.serialNumber ?? "-"}</span>
+          <span>Warranty: {asset.warrantyExpiry ? new Date(asset.warrantyExpiry).toLocaleDateString() : "-"}</span>
+          <span>Contract: {asset.contractRef ?? "-"}</span>
+          <span>Book value: ${bookValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function AssetEditForm({ asset, saving, onSubmit }: { asset: any; saving: boolean; onSubmit: (formData: FormData) => void }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(new FormData(event.currentTarget));
+  }
+
+  const fieldClass = "h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-lagoon";
+  const textValue = (value: unknown) => (value === null || value === undefined ? "" : String(value));
+  const dateValue = (value: unknown) => (value ? new Date(String(value)).toISOString().slice(0, 10) : "");
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">Admin Edit Asset</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="tag" defaultValue={textValue(asset.tag)} className={fieldClass} required />
+        <input name="name" defaultValue={textValue(asset.name)} className={fieldClass} required />
+        <input name="category" defaultValue={textValue(asset.category)} className={fieldClass} required />
+        <input name="system" defaultValue={textValue(asset.system)} className={fieldClass} required />
+        <select name="criticality" defaultValue={asset.criticality} className={fieldClass}>
+          <option>LOW</option>
+          <option>MEDIUM</option>
+          <option>HIGH</option>
+          <option>CRITICAL</option>
+        </select>
+        <select name="status" defaultValue={asset.status} className={fieldClass}>
+          <option>ACTIVE</option>
+          <option>STANDBY</option>
+          <option>DOWN</option>
+          <option>RETIRED</option>
+        </select>
+        <input name="serialNumber" defaultValue={textValue(asset.serialNumber)} className={fieldClass} placeholder="Serial number" />
+        <input name="manufacturer" defaultValue={textValue(asset.manufacturer)} className={fieldClass} placeholder="Manufacturer" />
+        <input name="model" defaultValue={textValue(asset.model)} className={fieldClass} placeholder="Model" />
+        <div className="grid grid-cols-2 gap-3">
+          <input name="floor" defaultValue={textValue(asset.floor)} className={fieldClass} placeholder="Floor" />
+          <input name="room" defaultValue={textValue(asset.room)} className={fieldClass} placeholder="Room" />
+        </div>
+        <input name="warrantyExpiry" type="date" defaultValue={dateValue(asset.warrantyExpiry)} className={fieldClass} />
+        <input name="contractRef" defaultValue={textValue(asset.contractRef)} className={fieldClass} placeholder="Contract reference" />
+        <input name="documentationUrl" defaultValue={textValue(asset.documentationUrl)} className={fieldClass} placeholder="Documentation URL" />
+        <div className="grid grid-cols-3 gap-3">
+          <input name="purchaseCost" type="number" defaultValue={textValue(asset.purchaseCost)} className={fieldClass} placeholder="Cost" />
+          <input name="salvageValue" type="number" defaultValue={textValue(asset.salvageValue)} className={fieldClass} placeholder="Salvage" />
+          <input name="depreciationRate" type="number" defaultValue={textValue(asset.depreciationRate)} className={fieldClass} placeholder="Dep. %" />
+        </div>
+        <input name="conditionScore" type="number" min="0" max="100" defaultValue={textValue(asset.conditionScore)} className={fieldClass} />
+        <button disabled={saving} className="h-11 rounded-lg bg-coral font-black text-white disabled:bg-slate-400">Save Admin Changes</button>
+      </div>
+    </form>
   );
 }
 
@@ -597,6 +739,8 @@ function ActionForm({ title, fields, onSubmit, saving }: { title: string; fields
             {field.replace(/([A-Z])/g, " $1")}
             {field === "description" || field === "jobPlan" ? (
               <textarea name={field} required className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+            ) : field === "warrantyExpiry" ? (
+              <input name={field} type="date" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
             ) : field === "priority" || field === "criticality" ? (
               <select name={field} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
                 <option>LOW</option>
