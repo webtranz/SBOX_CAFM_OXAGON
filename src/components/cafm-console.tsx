@@ -126,6 +126,33 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
     setSaving(false);
   }
 
+  async function postRecord(path: string, formData: FormData, successLabel: string) {
+    setSaving(true);
+    const payload = Object.fromEntries(formData.entries());
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    setToast(response.ok ? `${successLabel} saved.` : result.message ?? "Action failed.");
+    if (response.ok) await refreshData();
+    setSaving(false);
+  }
+
+  async function patchRecord(path: string, body: Record<string, string>, successLabel: string) {
+    setSaving(true);
+    const response = await fetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    setToast(response.ok ? successLabel : result.message ?? "Action failed.");
+    if (response.ok) await refreshData();
+    setSaving(false);
+  }
+
   return (
     <main className="min-h-screen p-4 text-ink sm:p-6 lg:p-8">
       <section className="mx-auto grid max-w-[1540px] grid-cols-1 gap-5 lg:grid-cols-[260px_1fr]">
@@ -189,11 +216,11 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button className="flex h-11 items-center gap-2 rounded-lg bg-coral px-4 font-black text-white shadow-lg">
+                <button onClick={() => setActive("work")} className="flex h-11 items-center gap-2 rounded-lg bg-coral px-4 font-black text-white shadow-lg">
                   <Plus size={18} />
                   New Work
                 </button>
-                <button className="flex h-11 items-center gap-2 rounded-lg bg-lagoon px-4 font-black text-white shadow-lg">
+                <button onClick={() => setActive("helpdesk")} className="flex h-11 items-center gap-2 rounded-lg bg-lagoon px-4 font-black text-white shadow-lg">
                   <Smartphone size={18} />
                   Dispatch
                 </button>
@@ -214,13 +241,13 @@ export function CafmConsole({ data }: { data: ConsoleData }) {
           </section>
 
           {active === "command" && <CommandCenter data={records} />}
-          {active === "assets" && <Assets assets={filteredAssets} query={query} setQuery={setQuery} />}
-          {active === "work" && <WorkOrders data={records} submitWorkOrder={submitWorkOrder} saving={saving} />}
+          {active === "assets" && <Assets assets={filteredAssets} query={query} setQuery={setQuery} saving={saving} submitAsset={(formData) => postRecord("/api/assets", formData, "Asset")} />}
+          {active === "work" && <WorkOrders data={records} submitWorkOrder={submitWorkOrder} saving={saving} updateWorkOrder={(id, status) => patchRecord(`/api/work-orders/${id}`, { status }, `Work order marked ${status}.`)} />}
           {active === "helpdesk" && <Helpdesk requests={records.requests} submitRequest={submitRequest} saving={saving} />}
           {active === "ppm" && <Ppm />}
-          {active === "inventory" && <Inventory inventory={records.inventory} />}
-          {active === "hse" && <Hse inspections={records.inspections} />}
-          {active === "iot" && <Iot alerts={records.alerts} />}
+          {active === "inventory" && <Inventory inventory={records.inventory} saving={saving} submitInventory={(formData) => postRecord("/api/inventory", formData, "Inventory item")} />}
+          {active === "hse" && <Hse inspections={records.inspections} saving={saving} submitInspection={(formData) => postRecord("/api/inspections", formData, "Inspection")} />}
+          {active === "iot" && <Iot alerts={records.alerts} saving={saving} acknowledgeAlert={(id) => patchRecord(`/api/iot-alerts/${id}`, {}, "IoT alert acknowledged.")} />}
         </section>
       </section>
     </main>
@@ -299,30 +326,33 @@ function CommandCenter({ data }: { data: ConsoleData }) {
   );
 }
 
-function Assets({ assets, query, setQuery }: { assets: any[]; query: string; setQuery: (value: string) => void }) {
+function Assets({ assets, query, setQuery, submitAsset, saving }: { assets: any[]; query: string; setQuery: (value: string) => void; submitAsset: (formData: FormData) => void; saving: boolean }) {
   return (
-    <Panel title="Enterprise Asset Register" icon={Building2}>
-      <div className="mb-4 flex h-12 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3">
-        <Search size={18} className="text-slate-400" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by tag, asset, category or system" className="w-full outline-none" />
-      </div>
-      <DataTable
-        rows={assets}
-        columns={[
-          ["tag", "Tag"],
-          ["name", "Asset"],
-          ["category", "Category"],
-          ["system", "System"],
-          ["criticality", "Criticality"],
-          ["status", "Status"],
-          ["conditionScore", "Health"],
-        ]}
-      />
-    </Panel>
+    <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+      <Panel title="Enterprise Asset Register" icon={Building2}>
+        <div className="mb-4 flex h-12 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3">
+          <Search size={18} className="text-slate-400" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by tag, asset, category or system" className="w-full outline-none" />
+        </div>
+        <DataTable
+          rows={assets}
+          columns={[
+            ["tag", "Tag"],
+            ["name", "Asset"],
+            ["category", "Category"],
+            ["system", "System"],
+            ["criticality", "Criticality"],
+            ["status", "Status"],
+            ["conditionScore", "Health"],
+          ]}
+        />
+      </Panel>
+      <ActionForm title="Register Asset" onSubmit={submitAsset} fields={["tag", "name", "category", "system", "criticality", "manufacturer", "model", "purchaseCost", "conditionScore"]} saving={saving} />
+    </section>
   );
 }
 
-function WorkOrders({ data, submitWorkOrder, saving }: { data: ConsoleData; submitWorkOrder: (formData: FormData) => void; saving: boolean }) {
+function WorkOrders({ data, submitWorkOrder, saving, updateWorkOrder }: { data: ConsoleData; submitWorkOrder: (formData: FormData) => void; saving: boolean; updateWorkOrder: (id: string, status: string) => void }) {
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Work Order Control" icon={Wrench}>
@@ -337,6 +367,17 @@ function WorkOrders({ data, submitWorkOrder, saving }: { data: ConsoleData; subm
             ["cost", "Cost"],
           ]}
         />
+        <div className="mt-4 grid gap-2 md:grid-cols-2">
+          {data.workOrders.slice(0, 4).map((work) => (
+            <div key={work.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-3">
+              <span className="text-sm font-bold">{work.woNo}</span>
+              <div className="flex gap-2">
+                <button disabled={saving} onClick={() => updateWorkOrder(work.id, "IN_PROGRESS")} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Start</button>
+                <button disabled={saving} onClick={() => updateWorkOrder(work.id, "COMPLETED")} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Complete</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </Panel>
       <ActionForm title="Generate Work Order" onSubmit={submitWorkOrder} fields={["title", "type", "priority", "assetTag", "jobPlan"]} saving={saving} />
     </section>
@@ -381,42 +422,46 @@ function Ppm() {
   );
 }
 
-function Inventory({ inventory }: { inventory: any[] }) {
+function Inventory({ inventory, submitInventory, saving }: { inventory: any[]; submitInventory: (formData: FormData) => void; saving: boolean }) {
   return (
-    <Panel title="MRO Inventory & Stores" icon={Boxes}>
-      <div className="grid gap-5 xl:grid-cols-[1fr_0.7fr]">
-        <DataTable
-          rows={inventory}
-          columns={[
-            ["sku", "SKU"],
-            ["name", "Item"],
-            ["category", "Category"],
-            ["onHand", "On hand"],
-            ["reorderPoint", "Reorder"],
-            ["vendor", "Vendor"],
-          ]}
-        />
-        <div className="h-72 rounded-lg bg-slate-50 p-3">
-          <ResponsiveContainer>
-            <BarChart data={inventory.map((item) => ({ name: item.sku?.slice(0, 8), stock: item.onHand, reorder: item.reorderPoint }))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#d9e6ee" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="stock" fill="#0f8b8d" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="reorder" fill="#ffd166" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+    <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+      <Panel title="MRO Inventory & Stores" icon={Boxes}>
+        <div className="grid gap-5 xl:grid-cols-[1fr_0.7fr]">
+          <DataTable
+            rows={inventory}
+            columns={[
+              ["sku", "SKU"],
+              ["name", "Item"],
+              ["category", "Category"],
+              ["onHand", "On hand"],
+              ["reorderPoint", "Reorder"],
+              ["vendor", "Vendor"],
+            ]}
+          />
+          <div className="h-72 rounded-lg bg-slate-50 p-3">
+            <ResponsiveContainer>
+              <BarChart data={inventory.map((item) => ({ name: item.sku?.slice(0, 8), stock: item.onHand, reorder: item.reorderPoint }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#d9e6ee" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="stock" fill="#0f8b8d" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="reorder" fill="#ffd166" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </div>
-    </Panel>
+      </Panel>
+      <ActionForm title="Add Stock Item" onSubmit={submitInventory} fields={["sku", "name", "category", "unit", "onHand", "reorderPoint", "unitCost", "vendor", "location"]} saving={saving} />
+    </section>
   );
 }
 
-function Hse({ inspections }: { inspections: any[] }) {
+function Hse({ inspections, submitInspection, saving }: { inspections: any[]; submitInspection: (formData: FormData) => void; saving: boolean }) {
   return (
-    <Panel title="HSE, Compliance & Inspections" icon={ShieldCheck}>
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+    <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+      <Panel title="HSE, Compliance & Inspections" icon={ShieldCheck}>
+        <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <DataTable
           rows={inspections}
           columns={[
@@ -433,12 +478,14 @@ function Hse({ inspections }: { inspections: any[] }) {
           <p className="mt-3 font-black">Permit-to-work control</p>
           <p className="mt-2 text-sm text-slate-700">Link high-risk maintenance to RAMS, lockout-tagout, confined space, hot work and audit trails.</p>
         </div>
-      </div>
-    </Panel>
+        </div>
+      </Panel>
+      <ActionForm title="Record Inspection" onSubmit={submitInspection} fields={["title", "area", "inspector", "risk", "score", "findings"]} saving={saving} />
+    </section>
   );
 }
 
-function Iot({ alerts }: { alerts: any[] }) {
+function Iot({ alerts, acknowledgeAlert, saving }: { alerts: any[]; acknowledgeAlert: (id: string) => void; saving: boolean }) {
   return (
     <Panel title="BMS, IoT & Energy Intelligence" icon={RadioTower}>
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
@@ -452,6 +499,17 @@ function Iot({ alerts }: { alerts: any[] }) {
             ["status", "Status"],
           ]}
         />
+        <div className="grid gap-2">
+          {alerts.map((alert) => (
+            <div key={alert.id} className="rounded-lg bg-slate-50 p-3">
+              <p className="text-sm font-black">{alert.assetTag}</p>
+              <p className="mt-1 text-sm text-slate-600">{alert.message}</p>
+              <button disabled={saving || alert.status === "TRIAGED"} onClick={() => acknowledgeAlert(alert.id)} className="mt-3 rounded-lg bg-ink px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">
+                {alert.status === "TRIAGED" ? "Acknowledged" : "Acknowledge"}
+              </button>
+            </div>
+          ))}
+        </div>
         <div className="rounded-lg bg-lagoon/10 p-4">
           <ClipboardCheck className="text-lagoon" />
           <p className="mt-3 font-black">Condition-based maintenance</p>
@@ -539,12 +597,19 @@ function ActionForm({ title, fields, onSubmit, saving }: { title: string; fields
             {field.replace(/([A-Z])/g, " $1")}
             {field === "description" || field === "jobPlan" ? (
               <textarea name={field} required className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
-            ) : field === "priority" ? (
+            ) : field === "priority" || field === "criticality" ? (
               <select name={field} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
                 <option>LOW</option>
                 <option>MEDIUM</option>
                 <option>HIGH</option>
                 <option>CRITICAL</option>
+              </select>
+            ) : field === "risk" ? (
+              <select name={field} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+                <option>LOW</option>
+                <option>MODERATE</option>
+                <option>HIGH</option>
+                <option>EXTREME</option>
               </select>
             ) : (
               <input name={field} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
