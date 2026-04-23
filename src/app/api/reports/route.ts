@@ -21,6 +21,9 @@ export async function GET(request: Request) {
   if (format === "pdf") {
     return file(pdf(rows, type, kpis, filters), "application/pdf", `${type}.pdf`);
   }
+  if (format === "html") {
+    return html(htmlPreview(rows, type, kpis, filters));
+  }
   return NextResponse.json({ type, rows, kpis, filters });
 }
 
@@ -167,7 +170,69 @@ function csv(rows: ReportRow[]) {
 
 function excel(rows: ReportRow[], title: string, kpis: Record<string, unknown> | null) {
   const headers = rows[0] ? Object.keys(rows[0]) : [];
-  return `<html><body><h1>${title}</h1>${kpiHtml(kpis)}<table border="1"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+  return `<html><body><h1>${escapeHtml(title)}</h1>${kpiHtml(kpis)}<table border="1"><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${escapeHtml(row[h] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+}
+
+function htmlPreview(rows: ReportRow[], title: string, kpis: Record<string, unknown> | null, filters: ReturnType<typeof reportFilters>) {
+  const headers = rows[0] ? Object.keys(rows[0]) : [];
+  const filterText = `Response > ${filters.responseGreaterThan ?? "-"} mins | Resolution > ${filters.resolutionGreaterThan ?? "-"} mins | SLA: ${filters.slaBreach ?? "all"} | Delayed: ${filters.delayedOnly ? "yes" : "no"}`;
+  const table = rows.length
+    ? `<div class="table-wrap"><table><thead><tr><th>#</th>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, index) => `<tr><td>${index + 1}</td>${headers.map((header) => `<td>${escapeHtml(row[header] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+    : `<div class="empty">No records found for this report.</div>`;
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)} Report</title>
+  <style>
+    :root { color-scheme: light; --ink:#111827; --muted:#64748b; --line:#dbe7ef; --soft:#f4f8fb; --lagoon:#0f8b8d; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Arial, Helvetica, sans-serif; color:var(--ink); background:#eef6f6; }
+    header { padding:24px 28px; background:linear-gradient(90deg,#c026d3,#4f46e5); color:white; }
+    h1 { margin:0; font-size:28px; letter-spacing:0; }
+    .meta { margin-top:8px; color:rgba(255,255,255,.82); font-size:13px; font-weight:700; }
+    main { padding:22px; }
+    .toolbar, .kpis, .table-wrap, .empty { border:1px solid var(--line); background:white; border-radius:8px; box-shadow:0 12px 30px rgba(15,23,42,.07); }
+    .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; padding:12px; margin-bottom:16px; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; }
+    a, button { border:0; border-radius:8px; padding:10px 13px; font-size:13px; font-weight:800; text-decoration:none; cursor:pointer; }
+    a { background:var(--lagoon); color:white; }
+    button { background:#111827; color:white; }
+    .kpis { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); padding:12px; margin-bottom:16px; }
+    .kpi { background:var(--soft); border-radius:8px; padding:12px; }
+    .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:900; text-transform:uppercase; }
+    .kpi strong { display:block; margin-top:6px; font-size:18px; }
+    .table-wrap { overflow:auto; }
+    table { width:100%; min-width:900px; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #e8eef3; padding:11px 12px; text-align:left; vertical-align:top; font-size:13px; white-space:nowrap; }
+    th { position:sticky; top:0; background:#f8fafc; color:#475569; text-transform:uppercase; font-size:11px; }
+    tr:nth-child(even) td { background:#fbfdff; }
+    .empty { padding:24px; color:var(--muted); font-weight:800; }
+    @media print { header, .toolbar { box-shadow:none; } .actions, button { display:none; } body { background:white; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${escapeHtml(prettyTitle(title))} Report Preview</h1>
+    <div class="meta">Generated ${escapeHtml(new Date().toLocaleString("en-US", { timeZone: "Asia/Riyadh" }))} | ${rows.length} records</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <div><strong>Filters</strong><br /><span style="color:var(--muted);font-size:13px">${escapeHtml(filterText)}</span></div>
+      <div class="actions">
+        <a href="/api/reports?type=${encodeURIComponent(title)}&format=csv">CSV</a>
+        <a href="/api/reports?type=${encodeURIComponent(title)}&format=excel">Excel</a>
+        <a href="/api/reports?type=${encodeURIComponent(title)}&format=pdf">PDF</a>
+        <button onclick="window.print()">Print</button>
+      </div>
+    </div>
+    ${kpiHtml(kpis, "div")}
+    ${table}
+  </main>
+</body>
+</html>`;
 }
 
 function pdf(rows: ReportRow[], title: string, kpis: Record<string, unknown> | null, filters: ReturnType<typeof reportFilters>) {
@@ -192,13 +257,29 @@ startxref
 %%EOF`;
 }
 
-function kpiHtml(kpis: Record<string, unknown> | null) {
+function kpiHtml(kpis: Record<string, unknown> | null, mode: "list" | "div" = "list") {
   if (!kpis) return "";
-  return `<h2>KPI Summary</h2><ul>${Object.entries(kpis).map(([key, value]) => `<li>${key}: ${value ?? "-"}</li>`).join("")}</ul>`;
+  if (mode === "div") {
+    return `<section class="kpis">${Object.entries(kpis).map(([key, value]) => `<div class="kpi"><span>${escapeHtml(key.replaceAll("_", " "))}</span><strong>${escapeHtml(value ?? "-")}</strong></div>`).join("")}</section>`;
+  }
+  return `<h2>KPI Summary</h2><ul>${Object.entries(kpis).map(([key, value]) => `<li>${escapeHtml(key)}: ${escapeHtml(value ?? "-")}</li>`).join("")}</ul>`;
 }
 
 function quote(value: unknown) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function prettyTitle(value: string) {
+  return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function file(body: string, contentType: string, filename: string) {
@@ -206,6 +287,14 @@ function file(body: string, contentType: string, filename: string) {
     headers: {
       "Content-Type": contentType,
       "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+  });
+}
+
+function html(body: string) {
+  return new NextResponse(body, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
     },
   });
 }

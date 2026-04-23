@@ -762,7 +762,7 @@ function ReportButtons({ type, label = "Report" }: { type: string; label?: strin
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
       <span className="rounded-lg bg-white px-3 py-2 text-xs font-black uppercase text-slate-500 shadow-sm">{label}</span>
-      <a className="rounded-lg bg-white px-3 py-2 text-xs font-black text-ink shadow-sm hover:text-lagoon" href={href("preview")} target="_blank" rel="noreferrer">Preview</a>
+      <a className="rounded-lg bg-white px-3 py-2 text-xs font-black text-ink shadow-sm hover:text-lagoon" href={href("html")} target="_blank" rel="noreferrer">Preview</a>
       <a className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white shadow-sm" href={href("csv")}>CSV</a>
       <a className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white shadow-sm" href={href("excel")}>Excel</a>
       <a className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white shadow-sm" href={href("pdf")}>PDF</a>
