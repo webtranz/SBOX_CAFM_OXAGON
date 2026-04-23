@@ -4,16 +4,16 @@ import { addHours } from "date-fns";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  title: z.string().min(3),
-  category: z.string().min(2),
+  title: z.string().optional(),
+  category: z.string().optional(),
   departmentCode: z.string().optional(),
   serviceCode: z.string().optional(),
   assignedTeamCode: z.string().optional(),
-  requester: z.string().min(2),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
-  location: z.string().min(2),
+  requester: z.string().optional(),
+  priority: z.string().optional(),
+  location: z.string().optional(),
   attachmentUrls: z.string().optional(),
-  description: z.string().min(3),
+  description: z.string().optional(),
 });
 
 const slaByPriority = {
@@ -27,7 +27,8 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     const count = await prisma.serviceRequest.count();
-    const slaHours = slaByPriority[input.priority];
+    const priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority || "") ? input.priority as keyof typeof slaByPriority : "MEDIUM";
+    const slaHours = slaByPriority[priority];
     const department = input.departmentCode ? await prisma.department.findUnique({ where: { code: input.departmentCode } }) : null;
     const supervisor = input.departmentCode
       ? await prisma.user.findFirst({
@@ -40,7 +41,16 @@ export async function POST(request: Request) {
 
     const created = await prisma.serviceRequest.create({
       data: {
-        ...input,
+        title: input.title || `Service Request ${count + 1}`,
+        category: input.category || "General",
+        departmentCode: input.departmentCode || null,
+        serviceCode: input.serviceCode || null,
+        assignedTeamCode: input.assignedTeamCode || null,
+        requester: input.requester || "Requester",
+        priority,
+        location: input.location || "Unassigned",
+        attachmentUrls: input.attachmentUrls || null,
+        description: input.description || input.title || "No description provided.",
         assignedSupervisorEmail: supervisor?.email || null,
         channel: "Web Portal",
         ticketNo: `SR-${String(count + 24001).padStart(5, "0")}`,

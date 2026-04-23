@@ -4,13 +4,13 @@ import { apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  code: z.string().min(2),
-  site: z.string().min(2),
-  zone: z.string().min(1),
-  building: z.string().min(1),
-  floor: z.string().min(1),
-  room: z.string().min(1),
-  type: z.string().min(2),
+  code: z.string().optional(),
+  site: z.string().optional(),
+  zone: z.string().optional(),
+  building: z.string().optional(),
+  floor: z.string().optional(),
+  room: z.string().optional(),
+  type: z.string().optional(),
   description: z.string().optional(),
 });
 
@@ -21,10 +21,22 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
+    const count = await prisma.location.count();
+    const code = input.code || `LOC-${String(count + 1).padStart(4, "0")}`;
+    const data = {
+      code,
+      site: input.site || "Main Site",
+      zone: input.zone || "General",
+      building: input.building || "Building",
+      floor: input.floor || "Floor",
+      room: input.room || "Room",
+      type: input.type || "General",
+      description: input.description || "",
+    };
     const location = await prisma.location.upsert({
-      where: { code: input.code },
-      update: { ...input, description: input.description || "" },
-      create: { ...input, description: input.description || "" },
+      where: { code },
+      update: data,
+      create: data,
     });
     return NextResponse.json(location, { status: 201 });
   } catch (error) {

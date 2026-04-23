@@ -4,17 +4,17 @@ import { addHours } from "date-fns";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  title: z.string().min(3),
-  type: z.string().min(2),
+  title: z.string().optional(),
+  type: z.string().optional(),
   assetType: z.string().optional(),
   departmentCode: z.string().optional(),
   serviceCode: z.string().optional(),
   assignedTeamCode: z.string().optional(),
   assignedToEmail: z.string().optional(),
   jobPlanCode: z.string().optional(),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  priority: z.string().optional(),
   assetTag: z.string().optional(),
-  jobPlan: z.string().min(3),
+  jobPlan: z.string().optional(),
 });
 
 const dueHours = {
@@ -27,6 +27,7 @@ const dueHours = {
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
+    const priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority || "") ? input.priority as keyof typeof dueHours : "MEDIUM";
     const [count, asset, technician, assignedUser, team] = await Promise.all([
       prisma.workOrder.count(),
       input.assetTag ? prisma.asset.findUnique({ where: { tag: input.assetTag } }) : null,
@@ -38,22 +39,22 @@ export async function POST(request: Request) {
     const created = await prisma.workOrder.create({
       data: {
         woNo: `WO-${String(count + 81001).padStart(5, "0")}`,
-        title: input.title,
-        type: input.type,
+        title: input.title || `Work Order ${count + 1}`,
+        type: input.type || "Reactive",
         assetType: input.assetType || asset?.assetGroup || asset?.category || null,
         departmentCode: input.departmentCode || null,
         serviceCode: input.serviceCode || null,
         assignedTeamCode: input.assignedTeamCode || team?.code || null,
         jobPlanCode: input.jobPlanCode || null,
-        priority: input.priority,
+        priority,
         status: input.assignedToEmail || input.assignedTeamCode ? "ASSIGNED" : "PENDING_ASSIGNMENT",
         assetId: asset?.id,
         assignedToId: assignedUser?.id || technician?.id,
         plannedStart: new Date(),
-        dueAt: addHours(new Date(), dueHours[input.priority]),
-        estimatedHours: input.priority === "CRITICAL" ? 2 : 4,
+        dueAt: addHours(new Date(), dueHours[priority]),
+        estimatedHours: priority === "CRITICAL" ? 2 : 4,
         cost: 0,
-        jobPlan: input.jobPlan,
+        jobPlan: input.jobPlan || input.title || "Work to be defined by supervisor.",
         safetyNotes: "Supervisor must verify permits, isolation and access requirements before work starts.",
       },
     });

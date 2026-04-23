@@ -7,7 +7,7 @@ const schema = z.object({
   teamName: z.string().min(2).optional(),
   name: z.string().min(2).optional(),
   departmentName: z.string().min(2).optional(),
-  departmentCode: z.string().min(1),
+  departmentCode: z.string().optional(),
   teamCode: z.string().min(1).optional(),
   companyIdNumber: z.string().optional(),
   service: z.string().optional(),
@@ -22,7 +22,8 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
-    const code = input.teamCode || input.departmentCode;
+    const count = await prisma.team.count();
+    const code = input.teamCode || input.departmentCode || `TEAM-${String(count + 1).padStart(4, "0")}`;
     const name = input.teamName || input.name || input.departmentName || code;
     const service = input.service || input.departmentName || "Service Team";
     const created = await prisma.team.upsert({
@@ -30,21 +31,21 @@ export async function POST(request: Request) {
       update: {
         name,
         type: service,
-        supervisor: input.companyIdNumber || input.departmentCode,
+        supervisor: input.companyIdNumber || input.departmentCode || "",
         phone: input.phone || "",
         email: input.email || "",
         shift: "General",
-        coverage: input.departmentCode,
+        coverage: input.departmentCode || "General",
       },
       create: {
         code,
         name,
         type: service,
-        supervisor: input.companyIdNumber || input.departmentCode,
+        supervisor: input.companyIdNumber || input.departmentCode || "",
         phone: input.phone || "",
         email: input.email || "",
         shift: "General",
-        coverage: input.departmentCode,
+        coverage: input.departmentCode || "General",
       },
     });
     return NextResponse.json(created, { status: 201 });

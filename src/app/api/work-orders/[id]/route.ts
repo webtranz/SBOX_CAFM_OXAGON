@@ -4,18 +4,18 @@ import { apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  title: z.string().min(3).optional(),
-  type: z.string().min(2).optional(),
+  title: z.string().optional(),
+  type: z.string().optional(),
   assetType: z.string().optional(),
   departmentCode: z.string().optional(),
   serviceCode: z.string().optional(),
   assignedTeamCode: z.string().optional(),
   assignedToEmail: z.string().optional(),
   jobPlanCode: z.string().optional(),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
-  status: z.enum(["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "VERIFIED", "REOPENED", "CLOSED"]).optional(),
+  priority: z.string().optional(),
+  status: z.string().optional(),
   assetTag: z.string().optional(),
-  jobPlan: z.string().min(3).optional(),
+  jobPlan: z.string().optional(),
   safetyNotes: z.string().optional(),
   estimatedHours: z.coerce.number().optional(),
   cost: z.coerce.number().optional(),
@@ -36,6 +36,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const input = schema.parse(await request.json());
+    const priority = input.priority && ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority) ? input.priority as any : undefined;
+    const status = input.status && ["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "VERIFIED", "REOPENED", "CLOSED"].includes(input.status) ? input.status as any : undefined;
     const [asset, assignedUser] = await Promise.all([
       input.assetTag ? prisma.asset.findUnique({ where: { tag: input.assetTag } }) : null,
       input.assignedToEmail ? prisma.user.findUnique({ where: { email: input.assignedToEmail } }) : null,
@@ -50,17 +52,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         serviceCode: input.serviceCode,
         assignedTeamCode: input.assignedTeamCode,
         jobPlanCode: input.jobPlanCode,
-        priority: input.priority,
-        status: input.status,
+        priority,
+        status,
         assetId: asset?.id,
         assignedToId: assignedUser?.id,
         jobPlan: input.jobPlan,
         safetyNotes: input.safetyNotes,
         estimatedHours: input.estimatedHours,
         cost: input.cost,
-        responseAt: input.responseAt ? new Date(input.responseAt) : input.status === "IN_PROGRESS" ? new Date() : undefined,
-        resolutionAt: input.resolutionAt ? new Date(input.resolutionAt) : input.status === "COMPLETED" ? new Date() : undefined,
-        finishedAt: input.finishedAt ? new Date(input.finishedAt) : input.status === "CLOSED" ? new Date() : undefined,
+        responseAt: input.responseAt ? new Date(input.responseAt) : status === "IN_PROGRESS" ? new Date() : undefined,
+        resolutionAt: input.resolutionAt ? new Date(input.resolutionAt) : status === "COMPLETED" ? new Date() : undefined,
+        finishedAt: input.finishedAt ? new Date(input.finishedAt) : status === "CLOSED" ? new Date() : undefined,
         photoUrls: input.photoUrls,
         assetsUsed: input.assetsUsed,
         inventoryUsed: input.inventoryUsed,
@@ -69,12 +71,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         materialRequest: input.materialRequest,
         rejectionReason: input.rejectionReason,
         supervisorDecision: input.supervisorDecision,
-        verifiedAt: input.status === "VERIFIED" || input.status === "CLOSED" ? new Date() : undefined,
-        actualHours: input.status && ["COMPLETED", "VERIFIED", "CLOSED"].includes(input.status) ? 4 : undefined,
+        verifiedAt: status === "VERIFIED" || status === "CLOSED" ? new Date() : undefined,
+        actualHours: status && ["COMPLETED", "VERIFIED", "CLOSED"].includes(status) ? 4 : undefined,
       },
     });
 
-    if (updated.requestId && input.status === "CLOSED") {
+    if (updated.requestId && status === "CLOSED") {
       await prisma.serviceRequest.update({ where: { id: updated.requestId }, data: { status: "CLOSED" } });
     }
 

@@ -4,14 +4,14 @@ import { apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  code: z.string().min(2),
-  name: z.string().min(3),
-  assetType: z.string().min(2),
+  code: z.string().optional(),
+  name: z.string().optional(),
+  assetType: z.string().optional(),
   departmentCode: z.string().optional(),
   serviceCode: z.string().optional(),
-  estimatedHours: z.coerce.number().min(0),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
-  steps: z.string().min(3),
+  estimatedHours: z.coerce.number().min(0).optional(),
+  priority: z.string().optional(),
+  steps: z.string().optional(),
   safetyNotes: z.string().optional(),
 });
 
@@ -22,10 +22,23 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
+    const count = await prisma.jobPlan.count();
+    const code = input.code || `JP-${String(count + 1).padStart(4, "0")}`;
+    const data = {
+      code,
+      name: input.name || `Job Plan ${count + 1}`,
+      assetType: input.assetType || "General",
+      departmentCode: input.departmentCode || null,
+      serviceCode: input.serviceCode || null,
+      estimatedHours: input.estimatedHours ?? 1,
+      priority: ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority || "") ? input.priority as any : "MEDIUM",
+      steps: input.steps || "Define work steps.",
+      safetyNotes: input.safetyNotes || "",
+    };
     const jobPlan = await prisma.jobPlan.upsert({
-      where: { code: input.code },
-      update: { ...input, safetyNotes: input.safetyNotes || "" },
-      create: { ...input, safetyNotes: input.safetyNotes || "" },
+      where: { code },
+      update: data,
+      create: data,
     });
     return NextResponse.json(jobPlan, { status: 201 });
   } catch (error) {

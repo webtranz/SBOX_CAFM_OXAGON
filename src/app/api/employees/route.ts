@@ -4,12 +4,12 @@ import { apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  companyId: z.string().min(1),
-  nationalityType: z.string().min(2),
-  departmentCode: z.string().min(1),
-  siteLocation: z.string().min(2),
+  name: z.string().optional(),
+  email: z.string().optional(),
+  companyId: z.string().optional(),
+  nationalityType: z.string().optional(),
+  departmentCode: z.string().optional(),
+  siteLocation: z.string().optional(),
 });
 
 export async function GET() {
@@ -19,10 +19,20 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
+    const count = await prisma.employee.count();
+    const companyId = input.companyId || `EMP-${String(count + 1).padStart(5, "0")}`;
+    const data = {
+      name: input.name || `Employee ${count + 1}`,
+      email: input.email || `${companyId.toLowerCase()}@cafm.local`,
+      companyId,
+      nationalityType: input.nationalityType || "Not specified",
+      departmentCode: input.departmentCode || "General",
+      siteLocation: input.siteLocation || "Main Site",
+    };
     const employee = await prisma.employee.upsert({
-      where: { companyId: input.companyId },
-      update: input,
-      create: input,
+      where: { companyId },
+      update: data,
+      create: data,
     });
     return NextResponse.json(employee, { status: 201 });
   } catch (error) {

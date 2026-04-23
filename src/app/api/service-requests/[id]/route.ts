@@ -5,18 +5,18 @@ import { apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  title: z.string().min(3),
-  category: z.string().min(2),
+  title: z.string().optional(),
+  category: z.string().optional(),
   departmentCode: z.string().optional(),
   serviceCode: z.string().optional(),
   assignedTeamCode: z.string().optional(),
-  requester: z.string().min(2),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
-  status: z.enum(["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "VERIFIED", "REOPENED", "CLOSED"]),
-  location: z.string().min(2),
+  requester: z.string().optional(),
+  priority: z.string().optional(),
+  status: z.string().optional(),
+  location: z.string().optional(),
   attachmentUrls: z.string().optional(),
   rejectionReason: z.string().optional(),
-  description: z.string().min(3),
+  description: z.string().optional(),
 });
 
 const slaByPriority = {
@@ -30,7 +30,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const input = schema.parse(await request.json());
-    const slaHours = slaByPriority[input.priority];
+    const current = await prisma.serviceRequest.findUnique({ where: { id } });
+    if (!current) throw new Error("Service request not found");
+    const priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority || "") ? input.priority as keyof typeof slaByPriority : current.priority;
+    const status = input.status && ["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "VERIFIED", "REOPENED", "CLOSED"].includes(input.status) ? input.status as any : current.status;
+    const slaHours = slaByPriority[priority];
     const department = input.departmentCode ? await prisma.department.findUnique({ where: { code: input.departmentCode } }) : null;
     const supervisor = input.departmentCode
       ? await prisma.user.findFirst({
@@ -43,12 +47,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const updated = await prisma.serviceRequest.update({
       where: { id },
       data: {
-        ...input,
+        title: input.title || current.title,
+        category: input.category || current.category || "General",
+        departmentCode: input.departmentCode || null,
+        serviceCode: input.serviceCode || null,
+        assignedTeamCode: input.assignedTeamCode || null,
+        requester: input.requester || current.requester || "Requester",
+        priority,
+        status,
+        location: input.location || current.location || "Unassigned",
+        attachmentUrls: input.attachmentUrls || null,
+        rejectionReason: input.rejectionReason || null,
+        description: input.description || current.description || "No description provided.",
         assignedSupervisorEmail: supervisor?.email || null,
         slaHours,
         dueAt: addHours(new Date(), slaHours),
-        reviewedAt: ["TRIAGED", "APPROVED", "REJECTED"].includes(input.status) ? new Date() : undefined,
-        approvedAt: input.status === "APPROVED" ? new Date() : undefined,
+        reviewedAt: ["TRIAGED", "APPROVED", "REJECTED"].includes(status) ? new Date() : undefined,
+        approvedAt: status === "APPROVED" ? new Date() : undefined,
       },
     });
 

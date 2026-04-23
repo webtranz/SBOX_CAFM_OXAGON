@@ -801,20 +801,20 @@ function AssetCreateForm({ onSubmit, saving }: { onSubmit: (formData: FormData) 
       </div>
       <div className="grid gap-3">
         <div className="grid gap-3 sm:grid-cols-3">
-          <AssetTextField label="SITE" name="siteCode" required />
-          <AssetTextField label="ZONE" name="zone" required />
-          <AssetTextField label="BLDG" name="buildingCode" required />
+          <AssetTextField label="SITE" name="siteCode" />
+          <AssetTextField label="ZONE" name="zone" />
+          <AssetTextField label="BLDG" name="buildingCode" />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <AssetTextField label="FLOOR" name="floor" required />
-          <AssetTextField label="ROOM" name="room" required />
+          <AssetTextField label="FLOOR" name="floor" />
+          <AssetTextField label="ROOM" name="room" />
         </div>
-        <AssetTextField label="Asset Group" name="assetGroup" required />
-        <AssetTextField label="ASSET NUMBER" name="tag" required />
-        <AssetTextField label="Asset Description" name="assetDescription" required />
+        <AssetTextField label="Asset Group" name="assetGroup" />
+        <AssetTextField label="ASSET NUMBER" name="tag" />
+        <AssetTextField label="Asset Description" name="assetDescription" />
         <AssetTextField label="Additional description" name="additionalDescription" />
         <AssetTextField label="Parent Asset" name="parentAsset" />
-        <AssetTextField label="Department" name="departmentCode" required />
+        <AssetTextField label="Department" name="departmentCode" />
         <label className="grid gap-1 text-sm font-bold text-slate-600">
           Remarks
           <textarea name="remarks" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
@@ -931,7 +931,7 @@ function AssetEditForm({ asset, saving, onSubmit }: { asset: any; saving: boolea
               <EditField label="ROOM" name="room" defaultValue={textValue(asset.room)} />
             </div>
             <EditField label="Asset Group" name="assetGroup" defaultValue={textValue(asset.assetGroup)} />
-            <EditField label="ASSET NUMBER" name="tag" defaultValue={textValue(asset.tag)} required />
+            <EditField label="ASSET NUMBER" name="tag" defaultValue={textValue(asset.tag)} />
             <EditField label="Asset Description" name="assetDescription" defaultValue={textValue(asset.assetDescription)} />
             <EditField label="Additional description" name="additionalDescription" defaultValue={textValue(asset.additionalDescription)} />
             <EditField label="Parent Asset" name="parentAsset" defaultValue={textValue(asset.parentAsset)} />
@@ -945,9 +945,9 @@ function AssetEditForm({ asset, saving, onSubmit }: { asset: any; saving: boolea
         <div>
           <p className="mb-3 text-xs font-black uppercase text-lagoon">Additional CAFM Fields</p>
           <div className="grid gap-3">
-            <EditField label="System display name" name="name" defaultValue={textValue(asset.name)} required />
-            <EditField label="Category" name="category" defaultValue={textValue(asset.category)} required />
-            <EditField label="System" name="system" defaultValue={textValue(asset.system)} required />
+            <EditField label="System display name" name="name" defaultValue={textValue(asset.name)} />
+            <EditField label="Category" name="category" defaultValue={textValue(asset.category)} />
+            <EditField label="System" name="system" defaultValue={textValue(asset.system)} />
             <label className="grid gap-1 text-sm font-bold text-slate-600">
               Criticality
               <select name="criticality" defaultValue={asset.criticality} className={fieldClass}>
@@ -1310,35 +1310,29 @@ function ServiceRequestForm({ title, request, services, departments, teams, loca
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <h3 className="text-xl font-black">{title}</h3>
       <div className="mt-4 grid gap-3">
-        <input name="title" defaultValue={request?.title ?? ""} required placeholder="Request title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <select name="departmentCode" defaultValue={request?.departmentCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
-          <option value="">Select department</option>
-          {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
-        </select>
+        <input name="title" defaultValue={request?.title ?? ""} placeholder="Request title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <select name="serviceCode" defaultValue={request?.serviceCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select service</option>
           {services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
         </select>
-        <select name="assignedTeamCode" defaultValue={request?.assignedTeamCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
-          <option value="">Assign team</option>
-          {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
-        </select>
-        <input name="category" defaultValue={request?.category ?? ""} required placeholder="Category" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <input name="requester" defaultValue={request?.requester ?? ""} required placeholder="Requester" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <select name="priority" defaultValue={request?.priority ?? "MEDIUM"} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <input name="category" defaultValue={request?.category ?? ""} placeholder="Category" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="requester" defaultValue={request?.requester ?? ""} placeholder="Requester" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="priority" defaultValue={request?.priority ?? "MEDIUM"} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
         </select>
         {request && (
-          <select name="status" defaultValue={request.status} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <select name="status" defaultValue={request.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option>OPEN</option><option>TRIAGED</option><option>APPROVED</option><option>REJECTED</option><option>ASSIGNED</option><option>CLOSED</option>
           </select>
         )}
         {!request && <input type="hidden" name="status" value="OPEN" />}
-        <select name="location" defaultValue={request?.location ?? ""} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <input type="hidden" name="departmentCode" value={request?.departmentCode ?? ""} />
+        <input type="hidden" name="assignedTeamCode" value={request?.assignedTeamCode ?? ""} />
+        <select name="location" defaultValue={request?.location ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select location</option>
           {locationOptions.map((location) => <option key={location}>{location}</option>)}
         </select>
-        <textarea name="description" defaultValue={request?.description ?? ""} required placeholder="Description" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        <textarea name="description" defaultValue={request?.description ?? ""} placeholder="Description" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <textarea name="attachmentUrls" defaultValue={request?.attachmentUrls ?? ""} placeholder="Attachment links / proof URLs" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         {request && <textarea name="rejectionReason" defaultValue={request?.rejectionReason ?? ""} placeholder="Reject / close reason" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />}
         <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Request"}</button>
@@ -1361,8 +1355,8 @@ function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string;
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <h3 className="text-xl font-black">{title}</h3>
       <div className="mt-4 grid gap-3">
-        <input name="title" defaultValue={work?.title ?? ""} required placeholder="Title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <input name="type" defaultValue={work?.type ?? ""} required placeholder="Work type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="title" defaultValue={work?.title ?? ""} placeholder="Title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="type" defaultValue={work?.type ?? ""} placeholder="Work type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <select name="assetType" defaultValue={work?.assetType ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select asset type</option>
           {assetTypes.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -1391,11 +1385,11 @@ function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string;
           <option value="">Select job plan</option>
           {data.jobPlans.map((plan) => <option key={plan.id} value={plan.code}>{plan.code} - {plan.name}</option>)}
         </select>
-        <select name="priority" defaultValue={work?.priority ?? "MEDIUM"} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <select name="priority" defaultValue={work?.priority ?? "MEDIUM"} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
         </select>
         {work && <select name="status" defaultValue={work.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon"><option>PENDING_ASSIGNMENT</option><option>ASSIGNED</option><option>ACCEPTED</option><option>REJECTED</option><option>IN_PROGRESS</option><option>ON_HOLD</option><option>COMPLETED</option><option>VERIFIED</option><option>REOPENED</option><option>CLOSED</option></select>}
-        <textarea name="jobPlan" defaultValue={work?.jobPlan ?? ""} required placeholder="Job plan / work steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        <textarea name="jobPlan" defaultValue={work?.jobPlan ?? ""} placeholder="Job plan / work steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <textarea name="safetyNotes" defaultValue={work?.safetyNotes ?? ""} placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         {work && (
           <div className="grid gap-3 rounded-lg bg-slate-50 p-3">
@@ -1639,15 +1633,15 @@ function TeamCodeForm({ departments, onSubmit, saving }: { departments: any[]; o
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <h3 className="text-xl font-black">Create Team Code</h3>
       <div className="mt-4 grid gap-3">
-        <input name="teamName" required placeholder="Team name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <select name="departmentCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <input name="teamName" placeholder="Team name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select department code</option>
           {departments.map((department) => (
             <option key={department.id} value={department.code}>{department.code} - {department.name}</option>
           ))}
         </select>
-        <input name="departmentName" required placeholder="Department name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <input name="teamCode" required placeholder="Team code manual entry" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="departmentName" placeholder="Department name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="teamCode" placeholder="Team code manual entry" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Create Team Code"}</button>
       </div>
     </form>
@@ -1666,15 +1660,15 @@ function TeamForm({ departments, onSubmit, saving }: { departments: any[]; onSub
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <h3 className="text-xl font-black">Add Service Team</h3>
       <div className="mt-4 grid gap-3">
-        <input name="name" required placeholder="Name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <input name="companyIdNumber" required placeholder="Company ID number" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <select name="departmentCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <input name="name" placeholder="Name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="companyIdNumber" placeholder="Company ID number" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select department code</option>
           {departments.map((department) => (
             <option key={department.id} value={department.code}>{department.code} - {department.name}</option>
           ))}
         </select>
-        <input name="service" required placeholder="Service" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="service" placeholder="Service" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <input name="email" type="email" placeholder="Email" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <input name="phone" placeholder="Phone number" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Submit"}</button>
@@ -1695,17 +1689,11 @@ function ServiceForm({ teams, departments, onSubmit, saving }: { teams: any[]; d
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <h3 className="text-xl font-black">Add Service</h3>
       <div className="mt-4 grid gap-3">
-        <input name="departmentName" required placeholder="Department name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <select name="departmentCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <input name="departmentName" placeholder="Department name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select department code</option>
           {departments.map((department) => (
             <option key={department.id} value={department.code}>{department.code} - {department.name}</option>
-          ))}
-        </select>
-        <select name="teamCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
-          <option value="">Select team code</option>
-          {teams.map((team) => (
-            <option key={team.id} value={team.code}>{team.code} - {team.name}</option>
           ))}
         </select>
         <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Submit"}</button>
@@ -1741,9 +1729,9 @@ function JobPlans({ jobPlans, services, departments, submitJobPlan, saving }: { 
       <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
         <h3 className="text-xl font-black">Add Job Plan</h3>
         <div className="mt-4 grid gap-3">
-          <input name="code" required placeholder="Job plan code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="name" required placeholder="Job plan name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="assetType" required placeholder="Specific asset type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="code" placeholder="Job plan code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="name" placeholder="Job plan name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="assetType" placeholder="Specific asset type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
           <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option value="">Select department</option>
             {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
@@ -1752,11 +1740,11 @@ function JobPlans({ jobPlans, services, departments, submitJobPlan, saving }: { 
             <option value="">Select service</option>
             {services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
           </select>
-          <input name="estimatedHours" type="number" required placeholder="Estimated hours" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="estimatedHours" type="number" placeholder="Estimated hours" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
           <select name="priority" defaultValue="MEDIUM" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
           </select>
-          <textarea name="steps" required placeholder="Job plan steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+          <textarea name="steps" placeholder="Job plan steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
           <textarea name="safetyNotes" placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
           <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Job Plan"}</button>
         </div>
@@ -1785,7 +1773,7 @@ function BulkUpload({ saving, onSubmit, initialModule }: { saving: boolean; onSu
         <form onSubmit={handleSubmit} className="grid gap-4">
           <label className="grid gap-1 text-sm font-bold text-slate-600">
             Module
-            <select name="module" required value={module} onChange={(event) => setModule(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <select name="module" value={module} onChange={(event) => setModule(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
               <option value="assets">Assets</option>
               <option value="categories">Asset Categories</option>
               <option value="inventory">Inventory</option>
@@ -1802,7 +1790,7 @@ function BulkUpload({ saving, onSubmit, initialModule }: { saving: boolean; onSu
           </label>
           <label className="grid gap-1 text-sm font-bold text-slate-600">
             CSV File
-            <input name="file" type="file" accept=".csv,text/csv" required className="rounded-lg border border-slate-200 bg-white p-3" />
+            <input name="file" type="file" accept=".csv,text/csv" className="rounded-lg border border-slate-200 bg-white p-3" />
           </label>
           <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">
             {saving ? "Uploading..." : "Upload CSV"}
@@ -1948,7 +1936,7 @@ function RoleForm({ onSubmit, saving }: { onSubmit: (formData: FormData) => void
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <h3 className="text-xl font-black">Create Custom Role</h3>
       <div className="mt-4 grid gap-3">
-        <input name="name" required placeholder="Role name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="name" placeholder="Role name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <textarea name="description" placeholder="Role purpose and access scope" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Create Role"}</button>
       </div>
@@ -1974,11 +1962,11 @@ function UserForm({ title, user, teams, departments, users, roles, onSubmit, sav
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <h3 className="text-xl font-black">{title}</h3>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <label className="grid gap-1 text-sm font-bold text-slate-600">User Name<input name="name" defaultValue={user?.name ?? ""} required placeholder="Enter your Name" className={cls} /></label>
-        <label className="grid gap-1 text-sm font-bold text-slate-600">Email<input name="email" defaultValue={user?.email ?? ""} required type="email" placeholder="Enter Email" className={cls} /></label>
+        <label className="grid gap-1 text-sm font-bold text-slate-600">User Name<input name="name" defaultValue={user?.name ?? ""} placeholder="Enter your Name" className={cls} /></label>
+        <label className="grid gap-1 text-sm font-bold text-slate-600">Email<input name="email" defaultValue={user?.email ?? ""} type="email" placeholder="Enter Email" className={cls} /></label>
         <label className="grid gap-1 text-sm font-bold text-slate-600">Phone<input name="phone" defaultValue={user?.phone ?? ""} placeholder="Enter Phone Number" className={cls} /></label>
         <label className="grid gap-1 text-sm font-bold text-slate-600">Password<input name="password" type="password" placeholder={user ? "New password optional" : "Optional, default Welcome@123"} className={cls} /></label>
-        <label className="grid gap-1 text-sm font-bold text-slate-600">Select User Role<select name="role" defaultValue={user?.role ?? "Service Team"} required className={cls}>
+        <label className="grid gap-1 text-sm font-bold text-slate-600">Select User Role<select name="role" defaultValue={user?.role ?? "Service Team"} className={cls}>
           {roleOptions(roles).map((role) => <option key={role}>{role}</option>)}
         </select></label>
         <label className="grid gap-1 text-sm font-bold text-slate-600">Select Department<select name="department" defaultValue={user?.department ?? ""} className={cls}>
@@ -2039,15 +2027,15 @@ function HumanResources({ employees, departments, submitEmployee, saving }: { em
       <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
         <h3 className="text-xl font-black">Add Employee</h3>
         <div className="mt-4 grid gap-3">
-          <input name="name" required placeholder="Name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="email" required type="email" placeholder="Email" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="companyId" required placeholder="Company ID" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="nationalityType" required placeholder="Nationality type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <select name="departmentCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <input name="name" placeholder="Name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="email" type="email" placeholder="Email" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="companyId" placeholder="Company ID" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="nationalityType" placeholder="Nationality type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option value="">Select department</option>
             {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
           </select>
-          <input name="siteLocation" required placeholder="Site location" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="siteLocation" placeholder="Site location" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
           <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Employee"}</button>
         </div>
       </form>
@@ -2244,7 +2232,7 @@ function ActionForm({ title, fields, onSubmit, saving }: { title: string; fields
           <label key={field} className="grid gap-1 text-sm font-bold capitalize text-slate-600">
             {field.replace(/([A-Z])/g, " $1")}
             {field === "description" || field === "jobPlan" ? (
-              <textarea name={field} required className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+              <textarea name={field} className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
             ) : field === "warrantyExpiry" ? (
               <input name={field} type="date" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
             ) : field === "statutory" ? (
@@ -2253,21 +2241,21 @@ function ActionForm({ title, fields, onSubmit, saving }: { title: string; fields
                 <option value="true">true</option>
               </select>
             ) : field === "priority" || field === "criticality" ? (
-              <select name={field} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+              <select name={field} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
                 <option>LOW</option>
                 <option>MEDIUM</option>
                 <option>HIGH</option>
                 <option>CRITICAL</option>
               </select>
             ) : field === "risk" ? (
-              <select name={field} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+              <select name={field} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
                 <option>LOW</option>
                 <option>MODERATE</option>
                 <option>HIGH</option>
                 <option>EXTREME</option>
               </select>
             ) : (
-              <input name={field} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+              <input name={field} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
             )}
           </label>
         ))}
@@ -2279,3 +2267,4 @@ function ActionForm({ title, fields, onSubmit, saving }: { title: string; fields
     </form>
   );
 }
+

@@ -5,11 +5,11 @@ import { apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
-  tag: z.string().min(3),
-  name: z.string().min(3),
-  category: z.string().min(2),
-  system: z.string().min(2),
-  criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  tag: z.string().optional(),
+  name: z.string().optional(),
+  category: z.string().optional(),
+  system: z.string().optional(),
+  criticality: z.string().optional(),
   serialNumber: z.string().optional(),
   siteCode: z.string().optional(),
   zone: z.string().optional(),
@@ -36,6 +36,11 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
+    const count = await prisma.asset.count();
+    const tag = input.tag || `AST-${String(count + 1).padStart(5, "0")}`;
+    const name = input.name || input.assetDescription || `Asset ${count + 1}`;
+    const category = input.category || input.assetGroup || "General";
+    const criticality = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.criticality || "") ? input.criticality as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" : "MEDIUM";
     const site = await prisma.site.findFirst({ include: { buildings: { take: 1 } } });
 
     if (!site) {
@@ -44,17 +49,17 @@ export async function POST(request: Request) {
 
     const created = await prisma.asset.create({
       data: {
-        tag: input.tag,
-        name: input.name,
-        category: input.category,
-        system: input.system,
-        criticality: input.criticality,
-        serialNumber: input.serialNumber || `${input.tag}-SN`,
+        tag,
+        name,
+        category,
+        system: input.system || "General",
+        criticality,
+        serialNumber: input.serialNumber || `${tag}-SN`,
         siteCode: input.siteCode || null,
         zone: input.zone || null,
         buildingCode: input.buildingCode || null,
-        assetGroup: input.assetGroup || input.category,
-        assetDescription: input.assetDescription || input.name,
+        assetGroup: input.assetGroup || category,
+        assetDescription: input.assetDescription || name,
         additionalDescription: input.additionalDescription || null,
         parentAsset: input.parentAsset || "TOP LEVEL",
         departmentCode: input.departmentCode || null,
@@ -72,7 +77,7 @@ export async function POST(request: Request) {
         conditionScore: input.conditionScore ?? 85,
         floor: input.floor || "Unassigned",
         room: input.room || "Unassigned",
-        qrCode: `CAFM-ASSET:${input.tag}`,
+        qrCode: `CAFM-ASSET:${tag}`,
         siteId: site.id,
         buildingId: site.buildings[0]?.id,
       },
