@@ -243,6 +243,33 @@ function workTimingRows(work: any): [string, unknown][] {
   ];
 }
 
+function localWorkMetric(work: any) {
+  return {
+    response: minutesBetween(work.createdAt, work.responseAt),
+    resolution: minutesBetween(work.responseAt, work.resolutionAt),
+    finish: minutesBetween(work.resolutionAt, work.finishedAt),
+    total: minutesBetween(work.responseAt, work.finishedAt),
+  };
+}
+
+function workMetricRows(workOrders: any[], showOnlyDelayed: boolean) {
+  return workOrders
+    .map((work) => {
+      const timing = localWorkMetric(work);
+      const delayed = timing.response === "-" || timing.resolution === "-" || timing.finish === "-";
+      return {
+        ...work,
+        assetTag: work.asset?.tag ?? work.assetTag ?? "",
+        responseMetric: timing.response,
+        resolutionMetric: timing.resolution,
+        finishMetric: timing.finish,
+        totalMetric: timing.total,
+        delayed,
+      };
+    })
+    .filter((work) => !showOnlyDelayed || work.delayed || work.status !== "CLOSED");
+}
+
 function DetailPanel({ title, rows }: { title: string; rows: [string, unknown][] }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -1071,7 +1098,10 @@ function WorkOrders({
   const [editing, setEditing] = useState<any | null>(null);
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(data.workOrders[0]?.id ?? null);
   const [workAction, setWorkAction] = useState<string | null>(null);
+  const [showTimeMetrics, setShowTimeMetrics] = useState(false);
+  const [showOnlyDelayed, setShowOnlyDelayed] = useState(false);
   const selectedWork = data.workOrders.find((work) => work.id === selectedWorkId) ?? data.workOrders[0];
+  const workRows = showTimeMetrics ? workMetricRows(data.workOrders, showOnlyDelayed) : data.workOrders;
   const isTechnician = roleKindLabel(role) === "technician";
   const canAssignOrEdit = permissions.manageWork && !isTechnician;
   const canExecute = permissions.executeWork;
@@ -1096,9 +1126,22 @@ function WorkOrders({
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Work Order Control" icon={Wrench}>
+        <div className="mb-4 flex flex-wrap gap-4 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-700">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={showTimeMetrics} onChange={(event) => setShowTimeMetrics(event.target.checked)} /> Show Time Metrics</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={showOnlyDelayed} onChange={(event) => setShowOnlyDelayed(event.target.checked)} /> Show Only Delayed</label>
+        </div>
         <DataTable
-          rows={data.workOrders}
-          columns={[
+          rows={workRows}
+          columns={showTimeMetrics ? [
+            ["woNo", "WO"],
+            ["assetTag", "Asset"],
+            ["status", "Status"],
+            ["responseMetric", "Response"],
+            ["resolutionMetric", "Resolution"],
+            ["finishMetric", "Finish"],
+            ["totalMetric", "Total Time"],
+            ["assignedTeamCode", "Team"],
+          ] : [
             ["woNo", "WO"],
             ["title", "Title"],
             ["type", "Type"],
@@ -2105,11 +2148,17 @@ function HumanResources({ employees, departments, submitEmployee, saving }: { em
 function Reports() {
   const [type, setType] = useState("assets");
   const [rows, setRows] = useState<any[]>([]);
+  const [kpis, setKpis] = useState<Record<string, unknown> | null>(null);
+  const [responseGreaterThan, setResponseGreaterThan] = useState("");
+  const [resolutionGreaterThan, setResolutionGreaterThan] = useState("");
+  const [slaBreach, setSlaBreach] = useState("");
+  const [delayedOnly, setDelayedOnly] = useState(false);
 
   async function preview(nextType = type) {
-    const response = await fetch(`/api/reports?type=${nextType}&format=preview`, { cache: "no-store" });
+    const response = await fetch(reportUrl(nextType, "preview"), { cache: "no-store" });
     const result = await response.json();
     setRows(result.rows ?? []);
+    setKpis(result.kpis ?? null);
   }
 
   useEffect(() => {
@@ -2117,6 +2166,17 @@ function Reports() {
   }, []);
 
   const columns = rows[0] ? Object.keys(rows[0]).map((key) => [key, key] as [string, string]) : [];
+  const exportUrl = (format: string) => reportUrl(type, format);
+  function reportUrl(nextType: string, format: string) {
+    const params = new URLSearchParams({ type: nextType, format });
+    if (nextType === "work-orders") {
+      if (responseGreaterThan) params.set("responseGreaterThan", responseGreaterThan);
+      if (resolutionGreaterThan) params.set("resolutionGreaterThan", resolutionGreaterThan);
+      if (slaBreach) params.set("slaBreach", slaBreach);
+      if (delayedOnly) params.set("delayedOnly", "true");
+    }
+    return `/api/reports?${params.toString()}`;
+  }
 
   return (
     <section className="space-y-5">
@@ -2136,10 +2196,33 @@ function Reports() {
             <option value="inventory">Inventory</option>
             <option value="ppm">PPM</option>
           </select>
-          <a className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white" href={`/api/reports?type=${type}&format=csv`}>CSV</a>
-          <a className="rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" href={`/api/reports?type=${type}&format=excel`}>Excel</a>
-          <a className="rounded-lg bg-coral px-4 py-3 text-sm font-black text-white" href={`/api/reports?type=${type}&format=pdf`}>PDF</a>
+          <a className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white" href={exportUrl("csv")}>CSV</a>
+          <a className="rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" href={exportUrl("excel")}>Excel</a>
+          <a className="rounded-lg bg-coral px-4 py-3 text-sm font-black text-white" href={exportUrl("pdf")}>PDF</a>
+          <button onClick={() => preview(type)} className="rounded-lg bg-ink px-4 py-3 text-sm font-black text-white">Apply Filters</button>
         </div>
+        {type === "work-orders" && (
+          <div className="mt-4 grid gap-3 rounded-lg bg-slate-50 p-3 md:grid-cols-4">
+            <input value={responseGreaterThan} onChange={(event) => setResponseGreaterThan(event.target.value)} placeholder="Response > mins" className="h-10 rounded-lg border border-slate-200 px-3 text-sm" />
+            <input value={resolutionGreaterThan} onChange={(event) => setResolutionGreaterThan(event.target.value)} placeholder="Resolution > mins" className="h-10 rounded-lg border border-slate-200 px-3 text-sm" />
+            <select value={slaBreach} onChange={(event) => setSlaBreach(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-sm">
+              <option value="">SLA all</option>
+              <option value="yes">SLA Breach</option>
+              <option value="no">No SLA Breach</option>
+            </select>
+            <label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={delayedOnly} onChange={(event) => setDelayedOnly(event.target.checked)} /> Delayed only</label>
+          </div>
+        )}
+        {kpis && (
+          <div className="mt-4 grid gap-3 md:grid-cols-5">
+            {Object.entries(kpis).map(([key, value]) => (
+              <div key={key} className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase text-slate-500">{key.replaceAll("_", " ")}</p>
+                <p className="mt-1 text-lg font-black">{String(value ?? "-")}</p>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="mt-4">
           <DataTable rows={rows} columns={columns} />
         </div>

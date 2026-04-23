@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { workOrderKpis, workOrderMetrics } from "@/lib/work-order-analytics";
 
 type ReportRow = Record<string, string | number | boolean | null>;
 
@@ -7,24 +8,54 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const type = url.searchParams.get("type") || "assets";
   const format = url.searchParams.get("format") || "preview";
-  const rows = await reportRows(type);
+  const filters = reportFilters(url);
+  const rows = await reportRows(type, filters);
+  const kpis = type === "work-orders" ? workOrderKpis(rows) : null;
 
   if (format === "csv") {
     return file(csv(rows), "text/csv", `${type}.csv`);
   }
   if (format === "excel") {
-    return file(excel(rows, type), "application/vnd.ms-excel", `${type}.xls`);
+    return file(excel(rows, type, kpis), "application/vnd.ms-excel", `${type}.xls`);
   }
   if (format === "pdf") {
-    return file(pdf(rows, type), "application/pdf", `${type}.pdf`);
+    return file(pdf(rows, type, kpis, filters), "application/pdf", `${type}.pdf`);
   }
-  return NextResponse.json({ type, rows });
+  return NextResponse.json({ type, rows, kpis, filters });
 }
 
-async function reportRows(type: string): Promise<ReportRow[]> {
+function reportFilters(url: URL) {
+  return {
+    responseGreaterThan: numberParam(url, "responseGreaterThan"),
+    resolutionGreaterThan: numberParam(url, "resolutionGreaterThan"),
+    slaBreach: url.searchParams.get("slaBreach"),
+    delayedOnly: url.searchParams.get("delayedOnly") === "true",
+  };
+}
+
+function numberParam(url: URL, key: string) {
+  const value = url.searchParams.get(key);
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function reportRows(type: string, filters: ReturnType<typeof reportFilters>): Promise<ReportRow[]> {
   if (type === "work-orders") {
-    const rows = await prisma.workOrder.findMany({ include: { asset: true, assignedTo: true }, orderBy: { createdAt: "desc" } });
-    return rows.map((row) => ({ woNo: row.woNo, title: row.title, type: row.type, priority: row.priority, status: row.status, asset: row.asset?.tag ?? "", assignedTo: row.assignedTo?.name ?? "", cost: Number(row.cost) }));
+    const rows = await prisma.workOrder.findMany({
+      include: { asset: true, assignedTo: true },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows
+      .map((row) => workOrderMetrics(row))
+      .filter((row) => {
+        if (filters.responseGreaterThan !== null && Number(row.response_duration_mins ?? -1) <= filters.responseGreaterThan) return false;
+        if (filters.resolutionGreaterThan !== null && Number(row.response_to_resolution_mins ?? -1) <= filters.resolutionGreaterThan) return false;
+        if (filters.slaBreach === "yes" && !row.sla_breached) return false;
+        if (filters.slaBreach === "no" && row.sla_breached) return false;
+        if (filters.delayedOnly && !row.delayed) return false;
+        return true;
+      });
   }
   if (type === "requests") {
     const rows = await prisma.serviceRequest.findMany({ orderBy: { createdAt: "desc" } });
@@ -48,13 +79,15 @@ function csv(rows: ReportRow[]) {
   return [headers.join(","), ...rows.map((row) => headers.map((header) => quote(row[header])).join(","))].join("\n");
 }
 
-function excel(rows: ReportRow[], title: string) {
+function excel(rows: ReportRow[], title: string, kpis: Record<string, unknown> | null) {
   const headers = rows[0] ? Object.keys(rows[0]) : [];
-  return `<html><body><h1>${title}</h1><table border="1"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+  return `<html><body><h1>${title}</h1>${kpiHtml(kpis)}<table border="1"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
 }
 
-function pdf(rows: ReportRow[], title: string) {
-  const lines = [`BrightWorks CAFM Report: ${title}`, `Generated: ${new Date().toISOString()}`, "", ...rows.slice(0, 35).map((row) => Object.values(row).join(" | "))];
+function pdf(rows: ReportRow[], title: string, kpis: Record<string, unknown> | null, filters: ReturnType<typeof reportFilters>) {
+  const kpiLines = kpis ? Object.entries(kpis).map(([key, value]) => `${key}: ${value ?? "-"}`) : [];
+  const filterLines = [`Filters: response>${filters.responseGreaterThan ?? "-"} mins, resolution>${filters.resolutionGreaterThan ?? "-"} mins, sla=${filters.slaBreach ?? "all"}, delayed=${filters.delayedOnly ? "yes" : "no"}`];
+  const lines = [`BrightWorks CAFM Report: ${title}`, `Generated: ${new Date().toISOString()}`, ...filterLines, ...kpiLines, "", ...rows.slice(0, 35).map((row) => Object.values(row).join(" | "))];
   const text = lines.join("\\n").replace(/[()\\]/g, "");
   return `%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
@@ -71,6 +104,11 @@ trailer<</Root 1 0 R/Size 6>>
 startxref
 0
 %%EOF`;
+}
+
+function kpiHtml(kpis: Record<string, unknown> | null) {
+  if (!kpis) return "";
+  return `<h2>KPI Summary</h2><ul>${Object.entries(kpis).map(([key, value]) => `<li>${key}: ${value ?? "-"}</li>`).join("")}</ul>`;
 }
 
 function quote(value: unknown) {
