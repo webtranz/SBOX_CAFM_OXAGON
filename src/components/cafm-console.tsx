@@ -756,6 +756,20 @@ function AccessDenied({ moduleId }: { moduleId: string }) {
   );
 }
 
+function ReportButtons({ type, label = "Report" }: { type: string; label?: string }) {
+  const href = (format: string) => `/api/reports?type=${encodeURIComponent(type)}&format=${format}`;
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <span className="rounded-lg bg-white px-3 py-2 text-xs font-black uppercase text-slate-500 shadow-sm">{label}</span>
+      <a className="rounded-lg bg-white px-3 py-2 text-xs font-black text-ink shadow-sm hover:text-lagoon" href={href("preview")} target="_blank" rel="noreferrer">Preview</a>
+      <a className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white shadow-sm" href={href("csv")}>CSV</a>
+      <a className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white shadow-sm" href={href("excel")}>Excel</a>
+      <a className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white shadow-sm" href={href("pdf")}>PDF</a>
+    </div>
+  );
+}
+
 function Assets({
   assets,
   selectedAssetId,
@@ -789,6 +803,7 @@ function Assets({
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
       <Panel title="Enterprise Asset Register" icon={Building2}>
+        <ReportButtons type="assets" label="Assets report" />
         <div className="mb-4 flex h-12 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3">
           <Search size={18} className="text-slate-400" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by tag, asset, category or system" className="w-full outline-none" />
@@ -1126,6 +1141,7 @@ function WorkOrders({
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Work Order Control" icon={Wrench}>
+        <ReportButtons type="work-orders" label="Work orders report" />
         <div className="mb-4 flex flex-wrap gap-4 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-700">
           <label className="flex items-center gap-2"><input type="checkbox" checked={showTimeMetrics} onChange={(event) => setShowTimeMetrics(event.target.checked)} /> Show Time Metrics</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={showOnlyDelayed} onChange={(event) => setShowOnlyDelayed(event.target.checked)} /> Show Only Delayed</label>
@@ -1271,6 +1287,7 @@ function Helpdesk({
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Helpdesk & SLA Triage" icon={TicketCheck}>
+        <ReportButtons type="requests" label="Service requests report" />
         <DataTable
           rows={requests}
           columns={[
@@ -1531,6 +1548,7 @@ function Ppm({ ppms, submitPpm, saving }: { ppms: any[]; submitPpm: (formData: F
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Preventive Maintenance Planner" icon={CalendarCheck}>
+        <ReportButtons type="ppm" label="PPM report" />
         <DataTable rows={ppms} columns={[["code", "Code"], ["name", "PPM"], ["assetTag", "Asset"], ["frequency", "Frequency"], ["nextDue", "Next due"], ["active", "Active"]]} />
         <div className="mt-5">
           <h4 className="font-black">PPM Calendar</h4>
@@ -1560,6 +1578,7 @@ function Inventory({ inventory, submitInventory, saving }: { inventory: any[]; s
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="MRO Inventory & Stores" icon={Boxes}>
+        <ReportButtons type="inventory" label="Inventory report" />
         <div className="grid gap-5 xl:grid-cols-[1fr_0.7fr]">
           <DataTable
             rows={inventory}
@@ -1595,6 +1614,7 @@ function Hse({ inspections, submitInspection, saving }: { inspections: any[]; su
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="HSE, Compliance & Inspections" icon={ShieldCheck}>
+        <ReportButtons type="inspections" label="HSE report" />
         <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <DataTable
           rows={inspections}
@@ -1622,6 +1642,7 @@ function Hse({ inspections, submitInspection, saving }: { inspections: any[]; su
 function Iot({ alerts, acknowledgeAlert, saving }: { alerts: any[]; acknowledgeAlert: (id: string) => void; saving: boolean }) {
   return (
     <Panel title="BMS, IoT & Energy Intelligence" icon={RadioTower}>
+      <ReportButtons type="iot-alerts" label="IoT alerts report" />
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <DataTable
           rows={alerts}
@@ -1688,26 +1709,31 @@ function TeamsServices({
       <div className="space-y-5">
         {showDepartments && (
           <Panel title="Department Codes" icon={MapPinned}>
+            <ReportButtons type="departments" label="Departments report" />
             <DataTable rows={departments} columns={[["code", "Code"], ["name", "Department"], ["siteLocation", "Site"], ["description", "Description"]]} />
           </Panel>
         )}
         {showTeamCode && (
           <Panel title="Team Codes" icon={Users}>
+            <ReportButtons type="teams" label="Team codes report" />
             <DataTable rows={teams} columns={[["code", "Team Code"], ["name", "Team Name"], ["departmentName", "Department"], ["departmentCode", "Dept Code"], ["service", "Service"]]} />
           </Panel>
         )}
         {showServiceTeams && (
           <Panel title="Service Teams" icon={Users}>
+            <ReportButtons type="teams" label="Service teams report" />
             <DataTable rows={teams} columns={[["code", "Code"], ["name", "Team"], ["companyIdNumber", "Company ID"], ["departmentCode", "Dept"], ["service", "Service"], ["email", "Email"], ["phone", "Phone"]]} />
           </Panel>
         )}
         {showServices && (
           <Panel title="Services Catalog" icon={ClipboardCheck}>
+            <ReportButtons type="services" label="Services report" />
             <DataTable rows={services} columns={[["code", "Code"], ["name", "Service"], ["departmentName", "Department"], ["departmentCode", "Dept"], ["teamCode", "Team Code"], ["slaHours", "SLA hrs"]]} />
           </Panel>
         )}
         {showAll && (
           <Panel title="Asset Categories" icon={Boxes}>
+            <ReportButtons type="asset-categories" label="Categories report" />
             <DataTable rows={categories} columns={[["code", "Code"], ["name", "Category"], ["type", "Type"], ["defaultLifeYrs", "Life yrs"], ["statutory", "Statutory"]]} />
           </Panel>
         )}
@@ -1808,6 +1834,7 @@ function Locations({ locations, submitLocation, saving }: { locations: any[]; su
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
       <Panel title="Location Register" icon={MapPinned}>
+        <ReportButtons type="locations" label="Locations report" />
         <DataTable rows={locations} columns={[["code", "Code"], ["site", "Site"], ["zone", "Zone"], ["building", "Building"], ["floor", "Floor"], ["room", "Room"], ["type", "Type"], ["active", "Active"]]} />
       </Panel>
       <ActionForm title="Add Location" onSubmit={submitLocation} fields={["code", "site", "zone", "building", "floor", "room", "type", "description"]} saving={saving} />
@@ -1826,6 +1853,7 @@ function JobPlans({ jobPlans, services, departments, submitJobPlan, saving }: { 
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
       <Panel title="Job Plans" icon={ClipboardCheck}>
+        <ReportButtons type="job-plans" label="Job plans report" />
         <DataTable rows={jobPlans} columns={[["code", "Code"], ["name", "Name"], ["assetType", "Asset Type"], ["departmentCode", "Dept"], ["serviceCode", "Service"], ["estimatedHours", "Hours"], ["priority", "Priority"], ["active", "Active"]]} />
       </Panel>
       <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
@@ -1978,6 +2006,7 @@ function UsersRoles({
     <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
       <div className="space-y-5">
         <Panel title="Users" icon={Users}>
+          <ReportButtons type="users" label="Users report" />
           <div className="grid gap-2">
             {users.map((user) => (
               <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3">
@@ -1999,6 +2028,7 @@ function UsersRoles({
           </div>
         </Panel>
         <Panel title="Permissions Matrix" icon={ShieldCheck}>
+          <ReportButtons type="permissions" label="Permissions report" />
           <div className="mb-4 flex flex-wrap gap-3">
             <select value={role} onChange={(event) => changeRole(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3">
               {roleOptions(roles).map((item) => <option key={item}>{item}</option>)}
@@ -2119,6 +2149,7 @@ function HumanResources({ employees, departments, submitEmployee, saving }: { em
   return (
     <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
       <Panel title="Employees" icon={Users}>
+        <ReportButtons type="employees" label="Employees report" />
         <div className="mb-4 flex items-center gap-3">
           <select value={nationality} onChange={(event) => setNationality(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3">
             {nationalities.map((item) => <option key={item}>{item}</option>)}
@@ -2234,6 +2265,7 @@ function Reports() {
 function AuditLogs({ logs }: { logs: any[] }) {
   return (
     <Panel title="Audit Logs" icon={Activity}>
+      <ReportButtons type="audit-logs" label="Audit report" />
       <DataTable
         rows={logs}
         columns={[
