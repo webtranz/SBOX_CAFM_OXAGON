@@ -223,6 +223,26 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
+function minutesBetween(start?: unknown, end?: unknown) {
+  if (!start || !end) return "-";
+  const startTime = new Date(String(start)).getTime();
+  const endTime = new Date(String(end)).getTime();
+  if (Number.isNaN(startTime) || Number.isNaN(endTime)) return "-";
+  const minutes = Math.max(0, Math.round((endTime - startTime) / 60000));
+  return `${minutes} min`;
+}
+
+function workTimingRows(work: any): [string, unknown][] {
+  return [
+    ["Response Time", work.responseAt],
+    ["Resolution Time", work.resolutionAt],
+    ["Finish Time", work.finishedAt],
+    ["Response to Resolution", minutesBetween(work.responseAt, work.resolutionAt)],
+    ["Resolution to Finish", minutesBetween(work.resolutionAt, work.finishedAt)],
+    ["Total Response to Finish", minutesBetween(work.responseAt, work.finishedAt)],
+  ];
+}
+
 function DetailPanel({ title, rows }: { title: string; rows: [string, unknown][] }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -1125,9 +1145,7 @@ function WorkOrders({
                 ["Assigned To", selectedWork.assignedTo?.email ?? selectedWork.assignedToEmail],
                 ["Asset", selectedWork.asset?.tag ?? selectedWork.assetTag],
                 ["Job Plan", selectedWork.jobPlanCode ?? selectedWork.jobPlan],
-                ["Response Time", selectedWork.responseAt],
-                ["Resolution Time", selectedWork.resolutionAt],
-                ["Finish Time", selectedWork.finishedAt],
+                ...workTimingRows(selectedWork),
                 ["Work Notes", selectedWork.workNotes],
                 ["Pictures", selectedWork.photoUrls],
                 ["Inventory Used", selectedWork.inventoryUsed],
