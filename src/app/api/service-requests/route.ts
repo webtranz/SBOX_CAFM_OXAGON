@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { addHours } from "date-fns";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -26,6 +27,7 @@ const slaByPriority = {
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
+    const user = await getCurrentUser();
     const count = await prisma.serviceRequest.count();
     const priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority || "") ? input.priority as keyof typeof slaByPriority : "MEDIUM";
     const slaHours = slaByPriority[priority];
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
         departmentCode: input.departmentCode || null,
         serviceCode: input.serviceCode || null,
         assignedTeamCode: input.assignedTeamCode || null,
-        requester: input.requester || "Requester",
+        requester: input.requester || user?.name || user?.email || "Requester",
         priority,
         location: input.location || "Unassigned",
         attachmentUrls: input.attachmentUrls || null,
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
         ticketNo: `SR-${String(count + 24001).padStart(5, "0")}`,
         slaHours,
         dueAt: addHours(new Date(), slaHours),
-        status: "OPEN",
+        status: "NEW",
       },
     });
 

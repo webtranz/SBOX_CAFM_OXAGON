@@ -237,7 +237,21 @@ function DetailPanel({ title, rows }: { title: string; rows: [string, unknown][]
   );
 }
 
-export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: string; email: string; role: string } }) {
+function dashboardSubtitle(role: string, department?: string | null) {
+  const lower = role.toLowerCase();
+  if (lower === "admin" || lower.includes("super admin")) {
+    return "Admin dashboard: full visibility for service requests, work orders, PPM, users, roles, reports and analytics.";
+  }
+  if (lower.includes("supervisor")) {
+    return `Supervisor dashboard: department-specific requests, work orders and PPM for ${department || "your department"}.`;
+  }
+  if (lower.includes("technician") || lower.includes("service team")) {
+    return "Technician dashboard: assigned work orders, assigned requests and assigned PPM task execution.";
+  }
+  return "Requester dashboard: create and track your service requests.";
+}
+
+export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: string; name: string; email: string; role: string; department?: string | null; team?: { code: string; name?: string } | null } }) {
   const [records, setRecords] = useState(data);
   const [active, setActive] = useState("command");
   const [activeView, setActiveView] = useState("dashboard");
@@ -458,7 +472,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
 
           <div className="mt-5 rounded-lg bg-slate-50 p-3">
             <p className="text-sm font-black">{user.name}</p>
-            <p className="mt-1 text-xs text-slate-700">{user.role} / {user.email}</p>
+            <p className="mt-1 text-xs text-slate-700">{user.role} / {user.department || "All departments"} / {user.email}</p>
             <button onClick={logout} className="mt-3 flex h-9 items-center gap-2 rounded-lg bg-white px-3 text-xs font-black text-coral shadow-sm">
               <LogOut size={14} />
               Logout
@@ -473,7 +487,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { name: s
                 <p className="text-sm font-black uppercase tracking-wider text-white/80">International level CAFM suite</p>
                 <h2 className="mt-1 text-3xl font-black sm:text-4xl">One-stop facility operations system</h2>
                 <p className="mt-2 max-w-3xl text-white/80">
-                  Built for high-volume portfolios: assets, work orders, SLAs, PPM, inspections, inventory, vendors, contracts, HSE, energy and IoT.
+                  {dashboardSubtitle(user.role, user.department)}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1311,6 +1325,10 @@ function ServiceRequestForm({ title, request, services, departments, teams, loca
       <h3 className="text-xl font-black">{title}</h3>
       <div className="mt-4 grid gap-3">
         <input name="title" defaultValue={request?.title ?? ""} placeholder="Request title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="departmentCode" defaultValue={request?.departmentCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select department</option>
+          {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
+        </select>
         <select name="serviceCode" defaultValue={request?.serviceCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select service</option>
           {services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
@@ -1322,11 +1340,10 @@ function ServiceRequestForm({ title, request, services, departments, teams, loca
         </select>
         {request && (
           <select name="status" defaultValue={request.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
-            <option>OPEN</option><option>TRIAGED</option><option>APPROVED</option><option>REJECTED</option><option>ASSIGNED</option><option>CLOSED</option>
+            <option>NEW</option><option>TRIAGED</option><option>APPROVED</option><option>REJECTED</option><option>ASSIGNED</option><option>CLOSED</option>
           </select>
         )}
-        {!request && <input type="hidden" name="status" value="OPEN" />}
-        <input type="hidden" name="departmentCode" value={request?.departmentCode ?? ""} />
+        {!request && <input type="hidden" name="status" value="NEW" />}
         <input type="hidden" name="assignedTeamCode" value={request?.assignedTeamCode ?? ""} />
         <select name="location" defaultValue={request?.location ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select location</option>
@@ -1807,7 +1824,7 @@ function Templates() {
     ["departments", "Departments", "code,name,siteLocation,description"],
     ["employees", "Employees", "name,email,companyId,nationalityType,departmentCode,siteLocation"],
     ["teams", "Teams", "name,companyIdNumber,departmentCode,service,email,phone"],
-    ["services", "Services", "departmentName,departmentCode,teamCode"],
+    ["services", "Services", "departmentName,departmentCode"],
     ["inventory", "Inventory", "sku,name,category,unit,onHand,reorderPoint,unitCost,vendor,location"],
     ["requests", "Requests", "ticketNo,title,category,requester,channel,priority,status,location,slaHours,description"],
     ["workOrders", "Work Orders", "woNo,title,type,assetType,departmentCode,serviceCode,assignedTeamCode,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes"],
@@ -1945,7 +1962,7 @@ function RoleForm({ onSubmit, saving }: { onSubmit: (formData: FormData) => void
 }
 
 function roleOptions(roles: any[]) {
-  const defaults = ["Admin", "Supervisor", "Service Team", "Technician", "Helpdesk", "Reception", "Resident", "Requester"];
+  const defaults = ["Admin", "Department Supervisor", "Supervisor", "Service Team", "Technician", "Helpdesk", "Reception", "Resident", "Requester"];
   return Array.from(new Set([...defaults, ...roles.map((role) => role.name)]));
 }
 

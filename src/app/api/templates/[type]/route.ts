@@ -5,7 +5,7 @@ const templates: Record<string, string> = {
   departments: "code,name,siteLocation,description\n",
   employees: "name,email,companyId,nationalityType,departmentCode,siteLocation\n",
   teams: "name,companyIdNumber,departmentCode,service,email,phone\n",
-  services: "departmentName,departmentCode,teamCode\n",
+  services: "departmentName,departmentCode\n",
   inventory: "sku,name,category,unit,onHand,reorderPoint,unitCost,vendor,location\n",
   requests: "ticketNo,title,category,departmentCode,serviceCode,assignedTeamCode,requester,channel,priority,status,location,attachmentUrls,rejectionReason,slaHours,description\n",
   workOrders: "woNo,title,type,assetType,departmentCode,serviceCode,assignedTeamCode,jobPlanCode,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes,workNotes,materialRequest,photoUrls,assetsUsed,inventoryUsed,supervisorDecision\n",

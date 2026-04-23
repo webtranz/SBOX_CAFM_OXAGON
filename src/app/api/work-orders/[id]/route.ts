@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "@/lib/api-response";
+import { accessRole, canManageDepartmentRecord } from "@/lib/access-control";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -36,6 +38,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const input = schema.parse(await request.json());
+    const current = await prisma.workOrder.findUnique({ where: { id } });
+    if (!current) throw new Error("Work order not found");
+    const user = await getCurrentUser();
+    const role = accessRole(user);
+    const isAssignedTechnician = role === "technician" && current.assignedToId === user?.id;
+    if (!canManageDepartmentRecord(user, current.departmentCode) && !isAssignedTechnician) {
+      return apiError(new Error("You do not have permission for this work order."), "Access denied", 403);
+    }
     const priority = input.priority && ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority) ? input.priority as any : undefined;
     const status = input.status && ["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "VERIFIED", "REOPENED", "CLOSED"].includes(input.status) ? input.status as any : undefined;
     const [asset, assignedUser] = await Promise.all([
@@ -89,6 +99,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const current = await prisma.workOrder.findUnique({ where: { id } });
+    const user = await getCurrentUser();
+    if (!canManageDepartmentRecord(user, current?.departmentCode)) {
+      return apiError(new Error("You do not have permission to delete this work order."), "Access denied", 403);
+    }
     await prisma.workOrder.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {

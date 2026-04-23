@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { addHours } from "date-fns";
+import { accessRole } from "@/lib/access-control";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -27,6 +29,11 @@ const dueHours = {
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
+    const user = await getCurrentUser();
+    const role = accessRole(user);
+    if (!["admin", "supervisor"].includes(role)) {
+      return NextResponse.json({ message: "Only Admin or Supervisor can create work orders." }, { status: 403 });
+    }
     const priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority || "") ? input.priority as keyof typeof dueHours : "MEDIUM";
     const [count, asset, technician, assignedUser, team] = await Promise.all([
       prisma.workOrder.count(),
@@ -42,7 +49,7 @@ export async function POST(request: Request) {
         title: input.title || `Work Order ${count + 1}`,
         type: input.type || "Reactive",
         assetType: input.assetType || asset?.assetGroup || asset?.category || null,
-        departmentCode: input.departmentCode || null,
+        departmentCode: input.departmentCode || user?.department || null,
         serviceCode: input.serviceCode || null,
         assignedTeamCode: input.assignedTeamCode || team?.code || null,
         jobPlanCode: input.jobPlanCode || null,

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { addHours } from "date-fns";
 import { apiError } from "@/lib/api-response";
+import { canManageDepartmentRecord } from "@/lib/access-control";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -32,6 +34,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const input = schema.parse(await request.json());
     const current = await prisma.serviceRequest.findUnique({ where: { id } });
     if (!current) throw new Error("Service request not found");
+    const user = await getCurrentUser();
+    if (!canManageDepartmentRecord(user, current.departmentCode)) {
+      return apiError(new Error("You do not have permission for this department request."), "Access denied", 403);
+    }
     const priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority || "") ? input.priority as keyof typeof slaByPriority : current.priority;
     const status = input.status && ["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "VERIFIED", "REOPENED", "CLOSED"].includes(input.status) ? input.status as any : current.status;
     const slaHours = slaByPriority[priority];
@@ -76,6 +82,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const current = await prisma.serviceRequest.findUnique({ where: { id } });
+    const user = await getCurrentUser();
+    if (!canManageDepartmentRecord(user, current?.departmentCode)) {
+      return apiError(new Error("You do not have permission to delete this request."), "Access denied", 403);
+    }
     await prisma.serviceRequest.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {

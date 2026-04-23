@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const data = await getOperatingData();
+  const data = await getOperatingData(user);
   const serialized = JSON.parse(JSON.stringify(data));
   return <CafmConsole data={serialized} user={user} />;
 }

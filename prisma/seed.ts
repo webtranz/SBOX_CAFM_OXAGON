@@ -23,6 +23,7 @@ async function main() {
 
   const standardRoles = [
     ["Admin", "Full system administration and configuration"],
+    ["Department Supervisor", "Department-restricted request review, conversion, work assignment and PPM visibility"],
     ["Supervisor", "Department supervision, request conversion and work assignment"],
     ["Service Team", "Assigned work execution, status, time, photos and material usage"],
     ["Technician", "Execute assigned tasks only"],
@@ -72,6 +73,7 @@ async function main() {
 
   const defaultRolePermissions: Record<string, string[]> = {
     Supervisor: ["work.manage", "work.assign", "work.verify", "work.execute", "requests.manage", "requests.approve", "requests.view", "reports.view"],
+    "Department Supervisor": ["work.manage", "work.assign", "work.verify", "work.execute", "requests.manage", "requests.approve", "requests.view", "ppm.manage", "reports.view"],
     "Service Team": ["work.execute", "requests.view"],
     Technician: ["work.execute", "requests.view"],
     Helpdesk: ["requests.manage", "requests.approve", "requests.view", "reports.view"],
