@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import {
   Activity,
   AlertTriangle,
@@ -22,7 +23,6 @@ import {
   Search,
   ShieldCheck,
   Smartphone,
-  Sparkles,
   TicketCheck,
   Wrench,
 } from "lucide-react";
@@ -467,11 +467,11 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
       <section className="grid min-h-screen grid-cols-1 lg:grid-cols-[300px_1fr]">
         <aside className="border-r border-slate-200 bg-white p-4">
           <div className="flex items-center gap-3 px-1">
-            <div className="grid h-11 w-11 place-items-center rounded-lg bg-lagoon text-white">
-              <Sparkles size={24} />
+            <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-lg border border-amber-200 bg-white p-1 shadow-sm">
+              <Image src="/tafga.png" alt="Tamimi Global CAFM logo" width={52} height={52} className="h-full w-full object-contain" priority />
             </div>
             <div>
-              <h1 className="text-lg font-black leading-tight">BrightWorks CAFM</h1>
+              <h1 className="text-lg font-black leading-tight">Tamimi Global CAFM</h1>
               <p className="text-xs text-slate-500">Enterprise facility command</p>
             </div>
           </div>
