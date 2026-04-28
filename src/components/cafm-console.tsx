@@ -616,7 +616,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
           )}
           {canViewActive && active === "jobPlans" && <JobPlans jobPlans={records.jobPlans} services={records.services} departments={records.departments} saving={saving} submitJobPlan={(formData) => postRecord("/api/job-plans", formData, "Job plan")} />}
           {canViewActive && active === "locations" && <Locations locations={records.locations} saving={saving} submitLocation={(formData) => postRecord("/api/locations", formData, "Location")} />}
-          {canViewActive && active === "ppm" && <Ppm ppms={records.ppms} saving={saving} submitPpm={(formData) => postRecord("/api/ppm", formData, "PPM")} />}
+          {canViewActive && active === "ppm" && <Ppm ppms={records.ppms} assets={records.assets} workOrders={records.workOrders} saving={saving} submitPpm={(formData) => postRecord("/api/ppm", formData, "PPM")} updatePpm={(body) => patchRecord("/api/ppm", body, "PPM updated.")} />}
           {canViewActive && active === "inventory" && <Inventory inventory={records.inventory} saving={saving} submitInventory={(formData) => postRecord("/api/inventory", formData, "Inventory item")} />}
           {canViewActive && active === "hse" && <Hse inspections={records.inspections} saving={saving} submitInspection={(formData) => postRecord("/api/inspections", formData, "Inspection")} />}
           {canViewActive && active === "iot" && <Iot alerts={records.alerts} saving={saving} acknowledgeAlert={(id) => patchRecord(`/api/iot-alerts/${id}`, {}, "IoT alert acknowledged.")} />}
@@ -1322,6 +1322,7 @@ function WorkOrders({
         <WorkOrderPreviewModal
           work={previewWork}
           onClose={() => setPreviewWork(null)}
+          onStatusChange={previewWork.status !== "CLOSED" ? (status) => runWorkAction(`${previewWork.id}:${status}`, previewWork, () => updateWorkStatus(previewWork.id, status)) : undefined}
           onEdit={canAssignOrEdit && previewWork.status !== "CLOSED" ? () => { setEditing(previewWork); setPreviewWork(null); } : undefined}
           onCloseWork={canFinalReview && ["PENDING_SUPERVISOR_REVIEW", "COMPLETED"].includes(previewWork.status) ? () => { setReviewWork({ work: previewWork, action: "close" }); setPreviewWork(null); } : undefined}
           onReopenWork={canFinalReview && ["PENDING_SUPERVISOR_REVIEW", "COMPLETED"].includes(previewWork.status) ? () => { setReviewWork({ work: previewWork, action: "reopen" }); setPreviewWork(null); } : undefined}
@@ -1860,12 +1861,14 @@ function RequestPreviewModal({
 function WorkOrderPreviewModal({
   work,
   onClose,
+  onStatusChange,
   onEdit,
   onCloseWork,
   onReopenWork,
 }: {
   work: any;
   onClose: () => void;
+  onStatusChange?: (status: string) => Promise<void> | void;
   onEdit?: () => void;
   onCloseWork?: () => void;
   onReopenWork?: () => void;
@@ -1884,10 +1887,26 @@ function WorkOrderPreviewModal({
     ["Closed", work.finishedAt],
     ["Last Updated", work.updatedAt],
   ];
+  const checklist = checklistItems(work.jobPlan || work.request?.description || work.title);
+  const historyRows = [
+    ["Created", work.createdAt, `Work order ${work.woNo} was created.`],
+    ["Status", work.responseAt, `Moved to ${work.status?.replaceAll("_", " ") || "Open"}.`],
+    ["Completed when", work.resolutionAt, "Service team submitted completion for supervisor review."],
+    ["Closed", work.finishedAt, work.supervisorDecision || "Final supervisor review pending."],
+  ].filter(([, date]) => Boolean(date));
 
   return (
     <RequestModalShell title={`Work Order Preview: ${work.woNo}`} onClose={onClose}>
       <div className="grid gap-5">
+        <div className="sticky top-0 z-10 -mx-5 -mt-5 border-b border-slate-200 bg-white px-5 py-3 shadow-sm">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <button type="button" disabled={!onStatusChange || work.status === "CLOSED"} onClick={() => onStatusChange?.("ASSIGNED")} className={`rounded-lg border px-3 py-3 text-xs font-black ${["OPEN", "NEW", "ASSIGNED", "REOPENED"].includes(work.status) ? "border-blue-400 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600"} disabled:opacity-50`}>Open</button>
+            <button type="button" disabled={!onStatusChange || work.status === "CLOSED"} onClick={() => onStatusChange?.("ON_HOLD")} className={`rounded-lg border px-3 py-3 text-xs font-black ${work.status === "ON_HOLD" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-600"} disabled:opacity-50`}>On Hold</button>
+            <button type="button" disabled={!onStatusChange || work.status === "CLOSED"} onClick={() => onStatusChange?.("IN_PROGRESS")} className={`rounded-lg border px-3 py-3 text-xs font-black ${work.status === "IN_PROGRESS" ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-600"} disabled:opacity-50`}>In Progress</button>
+            <button type="button" disabled={!onStatusChange || work.status === "CLOSED"} onClick={() => onStatusChange?.("COMPLETED")} className={`rounded-lg border px-3 py-3 text-xs font-black ${work.status === "PENDING_SUPERVISOR_REVIEW" ? "border-violet-400 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-600"} disabled:opacity-50`}>In Review</button>
+            <button type="button" disabled={!onStatusChange || work.status === "CLOSED"} onClick={() => onStatusChange?.("COMPLETED")} className={`rounded-lg border px-3 py-3 text-xs font-black ${["COMPLETED", "CLOSED"].includes(work.status) ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-600"} disabled:opacity-50`}>Completed</button>
+          </div>
+        </div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-2xl font-black">{work.title}</h3>
@@ -1906,6 +1925,9 @@ function WorkOrderPreviewModal({
           <PreviewField label="Assigned Team" value={work.assignedTeamCode} />
           <PreviewField label="Assigned Member" value={work.assignedTo?.name || work.assignedTo?.email} />
           <PreviewField label="Due Date" value={formatDateCell(work.dueAt)} />
+          <PreviewField label="Asset" value={work.asset?.tag || work.assetTag} />
+          <PreviewField label="Work Type" value={work.type} />
+          <PreviewField label="Schedule" value={work.jobPlanCode || work.frequency || work.plannedStart} />
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">
@@ -1985,6 +2007,60 @@ function WorkOrderPreviewModal({
 
         <div className="grid gap-2 rounded-lg bg-slate-50 p-4 md:grid-cols-3">
           {workTimingRows(work).map(([label, value]) => <PreviewField key={label} label={label} value={label.includes("Time") ? formatDateCell(value as string) : value} />)}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="font-black">Procedures & Checklist</h4>
+              <button type="button" onClick={onEdit} disabled={!onEdit} className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon disabled:opacity-50">Add Procedure</button>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {checklist.map((item, index) => (
+                <label key={`${item}-${index}`} className="flex gap-3 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-700">
+                  <input type="checkbox" defaultChecked={["COMPLETED", "PENDING_SUPERVISOR_REVIEW", "CLOSED"].includes(work.status)} className="mt-1" />
+                  <span>{index + 1}. {item}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between"><h4 className="font-black">Time</h4><button type="button" onClick={() => onStatusChange?.("IN_PROGRESS")} disabled={!onStatusChange || work.status === "CLOSED"} className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon disabled:opacity-50">Start Timer</button></div>
+              <div className="mt-3 grid gap-2">
+                <PreviewField label="Response" value={minutesBetween(work.createdAt, work.responseAt)} />
+                <PreviewField label="Resolution" value={minutesBetween(work.responseAt, work.resolutionAt)} />
+                <PreviewField label="Finish" value={minutesBetween(work.resolutionAt, work.finishedAt)} />
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between"><h4 className="font-black">Parts</h4><button type="button" onClick={onEdit} disabled={!onEdit} className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon disabled:opacity-50">Add Part</button></div>
+              <p className="mt-2 text-sm font-bold text-slate-600">{work.materialRequest || work.inventoryUsed || "No parts added."}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between"><h4 className="font-black">Other Costs</h4><button type="button" onClick={onEdit} disabled={!onEdit} className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon disabled:opacity-50">Add Cost</button></div>
+              <p className="mt-2 text-sm font-black text-slate-700">{work.cost ? `$${work.cost}` : "No extra costs."}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex gap-6 border-b border-slate-200 text-sm font-black">
+            <span className="border-b-2 border-lagoon px-2 pb-3 text-lagoon">WO Comments</span>
+            <span className="px-2 pb-3 text-slate-500">History</span>
+          </div>
+          <div className="mt-4 grid gap-4">
+            {historyRows.map(([label, date, note]) => (
+              <div key={`${label}-${date}`} className="grid gap-1 rounded-lg bg-slate-50 p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-black text-lagoon">{label}</p>
+                  <p className="text-xs font-bold text-slate-500">{formatDateCell(date as string)}</p>
+                </div>
+                <p className="font-bold text-slate-700">{note}</p>
+              </div>
+            ))}
+            <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">{work.workNotes || "No additional comments yet."}</p>
+          </div>
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
@@ -2076,6 +2152,20 @@ function attachmentList(value: unknown) {
 
 function isImageUrl(value: string) {
   return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(value) || value.startsWith("/uploads/");
+}
+
+function checklistItems(value: unknown) {
+  const items = String(value || "")
+    .split(/\r?\n|(?:^|\s)\d+[.)]\s+/)
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .filter((item) => item.length > 3);
+  return items.length ? items.slice(0, 12) : [
+    "Check filters and replace if required",
+    "Check fan blades for dust buildup and clean if necessary",
+    "Check moving parts for cracks and excessive wear",
+    "Verify safety isolation and lockout requirements",
+    "Record completion notes, time, parts and proof photos",
+  ];
 }
 
 function RequestStatusBadge({ status }: { status: string }) {
@@ -2312,8 +2402,33 @@ function WorkExecutionForm({ work, onSubmit, saving }: { work: any; onSubmit: (f
   );
 }
 
-function Ppm({ ppms, submitPpm, saving }: { ppms: any[]; submitPpm: (formData: FormData) => void; saving: boolean }) {
-  const grouped = ppms.reduce((acc: Record<string, any[]>, ppm) => {
+function Ppm({
+  ppms,
+  assets,
+  workOrders,
+  submitPpm,
+  updatePpm,
+  saving,
+}: {
+  ppms: any[];
+  assets: any[];
+  workOrders: any[];
+  submitPpm: (formData: FormData) => void;
+  updatePpm: (body: Record<string, string>) => Promise<void> | void;
+  saving: boolean;
+}) {
+  const [previewPpm, setPreviewPpm] = useState<any | null>(null);
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const filtered = ppms.filter((ppm) => {
+    const asset = assets.find((item) => item.tag === ppm.assetTag);
+    const haystack = `${ppm.code} ${ppm.name} ${ppm.assetTag} ${ppm.frequency} ${ppm.checklist} ${asset?.assetGroup || ""}`.toLowerCase();
+    const queryMatch = !search || haystack.includes(search.toLowerCase());
+    const statusMatch = statusFilter === "All" || (statusFilter === "Active" ? ppm.active : !ppm.active);
+    return queryMatch && statusMatch;
+  });
+  const grouped = filtered.reduce((acc: Record<string, any[]>, ppm) => {
     const key = ppm.nextDue ? new Date(ppm.nextDue).toISOString().slice(0, 10) : "Unscheduled";
     acc[key] = [...(acc[key] ?? []), ppm];
     return acc;
@@ -2323,28 +2438,196 @@ function Ppm({ ppms, submitPpm, saving }: { ppms: any[]; submitPpm: (formData: F
     <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
       <Panel title="Preventive Maintenance Planner" icon={CalendarCheck}>
         <ReportButtons type="ppm" label="PPM report" />
-        <DataTable rows={ppms} columns={[["code", "Code"], ["name", "PPM"], ["assetTag", "Asset"], ["frequency", "Frequency"], ["nextDue", "Next due"], ["active", "Active"]]} />
-        <div className="mt-5">
-          <h4 className="font-black">PPM Calendar</h4>
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setView("list")} className={`h-10 rounded-lg px-4 text-sm font-black ${view === "list" ? "bg-lagoon text-white" : "bg-slate-50 text-slate-600"}`}>List</button>
+            <button type="button" onClick={() => setView("calendar")} className={`h-10 rounded-lg px-4 text-sm font-black ${view === "calendar" ? "bg-lagoon text-white" : "bg-slate-50 text-slate-600"}`}>Calendar</button>
+          </div>
+          <div className="flex min-w-[260px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 lg:max-w-md">
+            <Search size={16} className="text-slate-400" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search PMs" className="h-11 w-full text-sm outline-none" />
+          </div>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold">
+            <option value="All">Status</option>
+            <option value="Active">Active</option>
+            <option value="Paused">Paused</option>
+          </select>
+        </div>
+        {view === "list" ? (
+          <div className="overflow-auto rounded-lg border border-slate-200">
+            <table className="min-w-[1100px] border-collapse bg-white text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-3">#</th><th className="px-3 py-3">Title</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Frequency</th><th className="px-3 py-3">Next Due</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Asset</th><th className="px-3 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((ppm, index) => {
+                  const asset = assets.find((item) => item.tag === ppm.assetTag);
+                  return (
+                    <tr key={ppm.id} onClick={() => setPreviewPpm(ppm)} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50">
+                      <td className="px-3 py-3 font-black text-slate-500">{index + 1}</td>
+                      <td className="px-3 py-3"><p className="font-black">{ppm.name}</p><p className="text-xs font-bold text-slate-500">{ppm.code}</p></td>
+                      <td className="px-3 py-3"><span className={`rounded-full border px-2 py-1 text-xs font-black ${ppm.active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{ppm.active ? "Planned" : "Paused"}</span></td>
+                      <td className="px-3 py-3">{ppm.frequency}</td>
+                      <td className="px-3 py-3">{formatDateCell(ppm.nextDue)}</td>
+                      <td className="px-3 py-3">{asset?.assetGroup || asset?.category || "-"}</td>
+                      <td className="px-3 py-3 text-lagoon">{ppm.assetTag}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex gap-2">
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setPreviewPpm(ppm); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Preview</button>
+                          <button type="button" disabled={saving} onClick={(event) => { event.stopPropagation(); updatePpm({ id: ppm.id, active: String(!ppm.active) }); }} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">{ppm.active ? "Pause" : "Activate"}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-3">
             {Object.entries(grouped).map(([date, items]) => (
               <div key={date} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="font-black text-lagoon">{date}</p>
                 <div className="mt-2 grid gap-2">
                   {items.map((ppm) => (
-                    <div key={ppm.id} className="rounded-lg bg-white p-2 text-sm">
+                    <button key={ppm.id} type="button" onClick={() => setPreviewPpm(ppm)} className="rounded-lg bg-white p-2 text-left text-sm hover:bg-lagoon/10">
                       <p className="font-bold">{ppm.name}</p>
                       <p className="text-slate-500">{ppm.assetTag} / {ppm.frequency}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        )}
       </Panel>
       <ActionForm title="Create PPM" onSubmit={submitPpm} fields={["code", "name", "assetTag", "frequency", "durationHrs", "checklist"]} saving={saving} />
+      {previewPpm && (
+        <PmPreviewModal
+          ppm={previewPpm}
+          asset={assets.find((asset) => asset.tag === previewPpm.assetTag)}
+          workOrders={workOrders.filter((work) => work.asset?.tag === previewPpm.assetTag || work.assetTag === previewPpm.assetTag)}
+          saving={saving}
+          onClose={() => setPreviewPpm(null)}
+          onUpdate={(body) => updatePpm({ id: previewPpm.id, ...body })}
+        />
+      )}
     </section>
+  );
+}
+
+function PmPreviewModal({
+  ppm,
+  asset,
+  workOrders,
+  saving,
+  onClose,
+  onUpdate,
+}: {
+  ppm: any;
+  asset?: any;
+  workOrders: any[];
+  saving: boolean;
+  onClose: () => void;
+  onUpdate: (body: Record<string, string>) => Promise<void> | void;
+}) {
+  const checklist = checklistItems(ppm.checklist);
+  const [tab, setTab] = useState<"comments" | "history">("history");
+  const priority = ppm.durationHrs >= 8 ? "CRITICAL" : ppm.durationHrs >= 4 ? "HIGH" : "MEDIUM";
+  const historyData = workOrders.slice(0, 8).map((work) => ({
+    name: String(formatDateCell(work.createdAt)).slice(0, 10),
+    created: 1,
+    completed: ["CLOSED", "COMPLETED", "PENDING_SUPERVISOR_REVIEW"].includes(work.status) ? 1 : 0,
+  }));
+
+  return (
+    <RequestModalShell title={`PM | ${ppm.name}`} onClose={onClose}>
+      <div className="grid gap-5">
+        <div className="sticky top-0 z-10 -mx-5 -mt-5 border-b border-slate-200 bg-white px-5 py-3 shadow-sm">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <button type="button" disabled={saving} onClick={() => onUpdate({ active: "true" })} className={`rounded-lg border px-3 py-3 text-xs font-black ${ppm.active ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 text-slate-600"}`}>Active</button>
+            <button type="button" disabled={saving} onClick={() => onUpdate({ active: "true" })} className="rounded-lg border border-lime-300 bg-lime-100 px-3 py-3 text-xs font-black text-lime-800">Planned</button>
+            <button type="button" disabled={saving} onClick={() => onUpdate({ active: "false" })} className={`rounded-lg border px-3 py-3 text-xs font-black ${!ppm.active ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-600"}`}>Paused</button>
+            <button type="button" disabled={saving} onClick={() => onUpdate({ nextDue: new Date().toISOString() })} className="rounded-lg border border-lagoon/30 px-3 py-3 text-xs font-black text-lagoon">Start Now</button>
+          </div>
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black text-slate-500">{ppm.code} / Next due {formatDateCell(ppm.nextDue)}</p>
+            <h3 className="mt-1 text-2xl font-black">{ppm.name}</h3>
+            <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm font-bold text-slate-600">{ppm.checklist}</p>
+          </div>
+          <RequestPriorityBadge priority={priority} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <PreviewField label="Starting From" value={formatDateCell(ppm.nextDue)} />
+          <PreviewField label="Progression" value={ppm.active ? "Active" : "Paused"} />
+          <PreviewField label="Time to Complete" value={`${ppm.durationHrs || 0} hrs`} />
+          <PreviewField label="Work Type" value="Preventive" />
+          <PreviewField label="Schedule" value={ppm.frequency} />
+          <PreviewField label="Asset" value={ppm.assetTag} />
+          <PreviewField label="Category" value={asset?.assetGroup || asset?.category} />
+          <PreviewField label="Location" value={[asset?.buildingCode, asset?.floor, asset?.room].filter(Boolean).join(" / ")} />
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="font-black">Procedures & Checklist</h4>
+            <button type="button" className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon">Add Procedure</button>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {checklist.map((item, index) => (
+              <label key={`${item}-${index}`} className="flex gap-3 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-700">
+                <input type="checkbox" className="mt-1" />
+                <span>{index + 1}. {item}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[0.7fr_1fr]">
+          <div className="grid gap-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between"><h4 className="font-black">Parts</h4><button type="button" className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon">Add Part</button></div>
+              <p className="mt-2 text-sm font-bold text-slate-500">No parts reserved yet.</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between"><h4 className="font-black">Other Costs</h4><button type="button" className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon">Add Cost</button></div>
+              <p className="mt-2 text-sm font-bold text-slate-500">No cost entries.</p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <h4 className="font-black">Work Order History</h4>
+            <div className="mt-3 h-56">
+              <ResponsiveContainer>
+                <BarChart data={historyData.length ? historyData : [{ name: "No WO", created: 0, completed: 0 }]}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#d9e6ee" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="created" fill="#06d6a0" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="completed" fill="#0b1f3a" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex gap-6 border-b border-slate-200 text-sm font-black">
+            <button type="button" onClick={() => setTab("comments")} className={`px-2 pb-3 ${tab === "comments" ? "border-b-2 border-lagoon text-lagoon" : "text-slate-500"}`}>PM Comments</button>
+            <button type="button" onClick={() => setTab("history")} className={`px-2 pb-3 ${tab === "history" ? "border-b-2 border-lagoon text-lagoon" : "text-slate-500"}`}>History</button>
+          </div>
+          <div className="mt-4 grid gap-3">
+            {tab === "history" && workOrders.length ? workOrders.slice(0, 6).map((work) => (
+              <div key={work.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+                <p className="font-black">{work.woNo} / {work.title}</p>
+                <p className="font-bold text-slate-500">{work.status?.replaceAll("_", " ")} / {formatDateCell(work.updatedAt)}</p>
+              </div>
+            )) : <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">{tab === "history" ? "No completed work orders for this PM yet." : "No PM comments yet."}</p>}
+          </div>
+        </div>
+      </div>
+    </RequestModalShell>
   );
 }
 
