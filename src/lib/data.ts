@@ -70,7 +70,11 @@ export async function getOperatingData(user: OperatingUser = null) {
       prisma.workOrder.findMany({
         where: visibleWorkWhere,
         orderBy: { dueAt: "asc" },
-        include: { assignedTo: { select: { name: true, email: true } }, asset: { select: { tag: true } } },
+        include: {
+          assignedTo: { select: { name: true, email: true } },
+          asset: { select: { tag: true, name: true, assetDescription: true, buildingCode: true, floor: true, room: true } },
+          request: { select: { ticketNo: true, title: true, description: true, requester: true, attachmentUrls: true, location: true, category: true, createdAt: true } },
+        },
       }),
       prisma.inventoryItem.findMany({ orderBy: { sku: "asc" } }),
       prisma.inspection.findMany({ orderBy: { dueAt: "asc" } }),

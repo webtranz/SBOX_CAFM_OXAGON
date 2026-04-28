@@ -48,8 +48,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!canManageDepartmentRecord(user, current.departmentCode) && !isAssignedTechnician) {
       return apiError(new Error("You do not have permission for this work order."), "Access denied", 403);
     }
+    if (current.status === "CLOSED") {
+      return apiError(new Error("Closed work orders are read-only."), "Closed work order is read-only", 403);
+    }
     const priority = input.priority && ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.priority) ? input.priority as any : undefined;
-    const status = input.status && ["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "VERIFIED", "REOPENED", "CLOSED"].includes(input.status) ? input.status as any : undefined;
+    const status = input.status && ["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "PENDING_SUPERVISOR_REVIEW", "VERIFIED", "REOPENED", "CLOSED"].includes(input.status) ? input.status as any : undefined;
+    const nextStatus = isAssignedTechnician && status === "COMPLETED" ? "PENDING_SUPERVISOR_REVIEW" as any : status;
     const [asset] = await Promise.all([
       input.assetTag ? prisma.asset.findUnique({ where: { tag: input.assetTag } }) : null,
     ]);
@@ -59,10 +63,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (isAssignedTechnician && (input.assignedTeamCode || input.assignedToEmail || input.departmentCode || input.priority || input.cost || input.supervisorDecision)) {
       return apiError(new Error("Service Team cannot assign, reassign, change priority, cost, or approve requests."), "Access denied", 403);
     }
+    if (isSupervisorOrAdmin && status === "REOPENED" && (!input.rejectionReason?.trim() || !input.supervisorDecision?.trim())) {
+      return apiError(new Error("Reopen reason and remarks are required."), "Reopen reason and remarks are required", 400);
+    }
     const updateData = isAssignedTechnician
       ? {
-          status,
-          responseAt: input.responseAt ? new Date(input.responseAt) : status === "IN_PROGRESS" ? new Date() : undefined,
+          status: nextStatus,
+          responseAt: input.responseAt ? new Date(input.responseAt) : status === "IN_PROGRESS" && !current.responseAt ? new Date() : undefined,
           resolutionAt: input.resolutionAt ? new Date(input.resolutionAt) : status === "COMPLETED" ? new Date() : undefined,
           photoUrls: input.photoUrls,
           assetsUsed: input.assetsUsed,
@@ -81,15 +88,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           assignedTeamCode: input.assignedTeamCode,
           jobPlanCode: input.jobPlanCode,
           priority,
-          status,
+          status: nextStatus,
           assetId: asset?.id,
           assignedToId: input.assignedTeamCode ? null : undefined,
           jobPlan: input.jobPlan,
           safetyNotes: input.safetyNotes,
           estimatedHours: input.estimatedHours,
           cost: input.cost,
-          responseAt: input.responseAt ? new Date(input.responseAt) : status === "IN_PROGRESS" ? new Date() : undefined,
-          resolutionAt: input.resolutionAt ? new Date(input.resolutionAt) : status === "COMPLETED" ? new Date() : undefined,
+          responseAt: input.responseAt ? new Date(input.responseAt) : status === "IN_PROGRESS" && !current.responseAt ? new Date() : undefined,
+          resolutionAt: input.resolutionAt ? new Date(input.resolutionAt) : (status === "COMPLETED" || status === "PENDING_SUPERVISOR_REVIEW") ? new Date() : undefined,
           finishedAt: input.finishedAt ? new Date(input.finishedAt) : status === "CLOSED" ? new Date() : undefined,
           photoUrls: input.photoUrls,
           assetsUsed: input.assetsUsed,
@@ -98,9 +105,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           workNotes: input.workNotes,
           materialRequest: input.materialRequest,
           rejectionReason: input.rejectionReason,
-          supervisorDecision: input.supervisorDecision,
+          supervisorDecision: status === "CLOSED"
+            ? `${input.supervisorDecision?.trim() || "Closed after supervisor verification."}\nClosed by: ${user?.name || user?.email || "Supervisor"}`
+            : input.supervisorDecision,
           verifiedAt: status === "VERIFIED" || status === "CLOSED" ? new Date() : undefined,
-          actualHours: status && ["COMPLETED", "VERIFIED", "CLOSED"].includes(status) ? 4 : undefined,
+          actualHours: status && ["COMPLETED", "PENDING_SUPERVISOR_REVIEW", "VERIFIED", "CLOSED"].includes(status) ? 4 : undefined,
         };
     if (!isSupervisorOrAdmin && (status === "CLOSED" || status === "REOPENED")) {
       return apiError(new Error("Only Supervisor or Admin can close or reopen work orders."), "Access denied", 403);
@@ -113,7 +122,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (updated.requestId && status === "CLOSED") {
       await prisma.serviceRequest.update({ where: { id: updated.requestId }, data: { status: "CLOSED" } });
     }
-    await auditAction({ user, action: `WORK_ORDER_${status || "UPDATE"}`, entity: "work_order", entityId: id, details: input.materialRequest || input.supervisorDecision || input.workNotes });
+    await auditAction({ user, action: `WORK_ORDER_${nextStatus || "UPDATE"}`, entity: "work_order", entityId: id, details: input.materialRequest || input.supervisorDecision || input.workNotes });
 
     return NextResponse.json(updated);
   } catch (error) {

@@ -1113,6 +1113,8 @@ function WorkOrders({
 }) {
   const [editing, setEditing] = useState<any | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [previewWork, setPreviewWork] = useState<any | null>(null);
+  const [reviewWork, setReviewWork] = useState<{ work: any; action: "close" | "reopen" } | null>(null);
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(data.workOrders[0]?.id ?? null);
   const [workAction, setWorkAction] = useState<string | null>(null);
   const [showTimeMetrics, setShowTimeMetrics] = useState(false);
@@ -1243,7 +1245,7 @@ function WorkOrders({
                 </thead>
                 <tbody>
                   {visibleWorks.map((work, index) => (
-                    <tr key={work.id} onClick={() => setSelectedWorkId(work.id)} className={`cursor-pointer border-t border-slate-100 align-top ${selectedWork?.id === work.id ? "bg-lagoon/5" : "hover:bg-slate-50"}`}>
+                    <tr key={work.id} onClick={() => { setSelectedWorkId(work.id); setPreviewWork(work); }} className={`cursor-pointer border-t border-slate-100 align-top ${selectedWork?.id === work.id ? "bg-lagoon/5" : "hover:bg-slate-50"}`}>
                       <td className="whitespace-nowrap px-3 py-3 font-black text-slate-500">{startIndex + index + 1}</td>
                       <td className="max-w-[280px] px-3 py-3"><div className="font-black">{work.title}</div><div className="mt-1 text-xs font-bold text-slate-500">{work.woNo}</div></td>
                       <td className="whitespace-nowrap px-3 py-3"><WorkOrderStatusBadge status={work.status} /></td>
@@ -1260,12 +1262,14 @@ function WorkOrders({
                       <td className="whitespace-nowrap px-3 py-3 text-lagoon">{formatDateCell(work.plannedStart)}</td>
                       <td className="px-3 py-3">
                         <div className="flex min-w-[300px] flex-wrap gap-2">
-                          {canAssignOrEdit && <button type="button" disabled={workAction === `${work.id}:edit`} onClick={(event) => { event.stopPropagation(); setSelectedWorkId(work.id); setEditing(work); }} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Edit</button>}
-                          {canExecute && <button type="button" disabled={workAction === `${work.id}:start`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:start`, work, () => updateWorkStatus(work.id, "IN_PROGRESS")); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">In Progress</button>}
-                          {canExecute && <button type="button" disabled={workAction === `${work.id}:hold`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:hold`, work, () => updateWorkStatus(work.id, "ON_HOLD")); }} className="rounded-lg bg-slate-500 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">On Hold</button>}
-                          {canExecute && <button type="button" disabled={workAction === `${work.id}:complete`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:complete`, work, () => updateWorkStatus(work.id, "COMPLETED")); }} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Complete</button>}
-                          {canFinalReview && <button type="button" disabled={workAction === `${work.id}:close`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:close`, work, () => updateWorkStatus(work.id, "CLOSED")); }} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Close</button>}
-                          {canAssignOrEdit && <button type="button" disabled={workAction === `${work.id}:delete`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:delete`, work, () => deleteWorkOrder(work.id)); }} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Delete</button>}
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedWorkId(work.id); setPreviewWork(work); }} className="rounded-lg bg-white px-3 py-2 text-xs font-black text-lagoon ring-1 ring-lagoon/30">Preview</button>
+                          {canAssignOrEdit && work.status !== "CLOSED" && <button type="button" disabled={workAction === `${work.id}:edit`} onClick={(event) => { event.stopPropagation(); setSelectedWorkId(work.id); setEditing(work); }} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Edit</button>}
+                          {canExecute && work.status !== "CLOSED" && work.status !== "PENDING_SUPERVISOR_REVIEW" && <button type="button" disabled={workAction === `${work.id}:start`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:start`, work, () => updateWorkStatus(work.id, "IN_PROGRESS")); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">In Progress</button>}
+                          {canExecute && work.status !== "CLOSED" && work.status !== "PENDING_SUPERVISOR_REVIEW" && <button type="button" disabled={workAction === `${work.id}:hold`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:hold`, work, () => updateWorkStatus(work.id, "ON_HOLD")); }} className="rounded-lg bg-slate-500 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">On Hold</button>}
+                          {canExecute && work.status !== "CLOSED" && work.status !== "PENDING_SUPERVISOR_REVIEW" && <button type="button" disabled={workAction === `${work.id}:complete`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:complete`, work, () => updateWorkStatus(work.id, "COMPLETED")); }} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Submit Review</button>}
+                          {canFinalReview && ["PENDING_SUPERVISOR_REVIEW", "COMPLETED"].includes(work.status) && <button type="button" disabled={workAction === `${work.id}:close`} onClick={(event) => { event.stopPropagation(); setSelectedWorkId(work.id); setReviewWork({ work, action: "close" }); }} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Close Work Order</button>}
+                          {canFinalReview && ["PENDING_SUPERVISOR_REVIEW", "COMPLETED"].includes(work.status) && <button type="button" disabled={workAction === `${work.id}:reopen`} onClick={(event) => { event.stopPropagation(); setSelectedWorkId(work.id); setReviewWork({ work, action: "reopen" }); }} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Reopen</button>}
+                          {canAssignOrEdit && work.status !== "CLOSED" && <button type="button" disabled={workAction === `${work.id}:delete`} onClick={(event) => { event.stopPropagation(); runWorkAction(`${work.id}:delete`, work, () => deleteWorkOrder(work.id)); }} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Delete</button>}
                         </div>
                       </td>
                     </tr>
@@ -1314,7 +1318,29 @@ function WorkOrders({
           <WorkOrderForm title="" data={data} work={editing} onSubmit={async (formData) => { await updateWorkOrder(editing.id, formData); setEditing(null); }} saving={saving} />
         </RequestModalShell>
       )}
-      {selectedWork && canExecute && !canAssignOrEdit && <WorkExecutionForm work={selectedWork} saving={saving} onSubmit={(formData) => updateWorkOrder(selectedWork.id, formData)} />}
+      {previewWork && (
+        <WorkOrderPreviewModal
+          work={previewWork}
+          onClose={() => setPreviewWork(null)}
+          onEdit={canAssignOrEdit && previewWork.status !== "CLOSED" ? () => { setEditing(previewWork); setPreviewWork(null); } : undefined}
+          onCloseWork={canFinalReview && ["PENDING_SUPERVISOR_REVIEW", "COMPLETED"].includes(previewWork.status) ? () => { setReviewWork({ work: previewWork, action: "close" }); setPreviewWork(null); } : undefined}
+          onReopenWork={canFinalReview && ["PENDING_SUPERVISOR_REVIEW", "COMPLETED"].includes(previewWork.status) ? () => { setReviewWork({ work: previewWork, action: "reopen" }); setPreviewWork(null); } : undefined}
+        />
+      )}
+      {reviewWork && (
+        <WorkOrderSupervisorReviewModal
+          work={reviewWork.work}
+          action={reviewWork.action}
+          teams={data.teams}
+          saving={saving}
+          onClose={() => setReviewWork(null)}
+          onSubmit={async (formData) => {
+            await updateWorkOrder(reviewWork.work.id, formData);
+            setReviewWork(null);
+          }}
+        />
+      )}
+      {selectedWork && canExecute && !canAssignOrEdit && selectedWork.status !== "CLOSED" && selectedWork.status !== "PENDING_SUPERVISOR_REVIEW" && <WorkExecutionForm work={selectedWork} saving={saving} onSubmit={(formData) => updateWorkOrder(selectedWork.id, formData)} />}
     </section>
   );
 }
@@ -1705,14 +1731,14 @@ function ServiceRequestForm({ title, request, services, departments, teams, loca
 function RequestModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4 pt-20 backdrop-blur-sm">
-      <div className="w-full max-w-xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
+      <div className="max-h-[86vh] w-full max-w-5xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between bg-ink px-4 py-3 text-white">
           <h3 className="text-sm font-black">{title}</h3>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="rounded-lg border border-cyan-400 px-3 py-2 text-xs font-black text-cyan-300">Cancel</button>
           </div>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="max-h-[calc(86vh-56px)] overflow-auto p-5">{children}</div>
       </div>
     </div>
   );
@@ -1831,6 +1857,207 @@ function RequestPreviewModal({
   );
 }
 
+function WorkOrderPreviewModal({
+  work,
+  onClose,
+  onEdit,
+  onCloseWork,
+  onReopenWork,
+}: {
+  work: any;
+  onClose: () => void;
+  onEdit?: () => void;
+  onCloseWork?: () => void;
+  onReopenWork?: () => void;
+}) {
+  const attachments = [...attachmentList(work.photoUrls), ...attachmentList(work.request?.attachmentUrls)];
+  const images = attachments.filter(isImageUrl);
+  const files = attachments.filter((item) => !isImageUrl(item));
+  const [activeImage, setActiveImage] = useState(images[0] ?? "");
+  const [zoom, setZoom] = useState(1);
+  const timelineRows: [string, unknown][] = [
+    ["Created", work.createdAt],
+    ["Assigned / Planned", work.plannedStart],
+    ["First Response", work.responseAt],
+    ["Completed by Team", work.resolutionAt],
+    ["Supervisor Review", work.verifiedAt],
+    ["Closed", work.finishedAt],
+    ["Last Updated", work.updatedAt],
+  ];
+
+  return (
+    <RequestModalShell title={`Work Order Preview: ${work.woNo}`} onClose={onClose}>
+      <div className="grid gap-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-2xl font-black">{work.title}</h3>
+            <p className="mt-1 text-sm font-bold text-slate-500">{work.woNo} / Linked request {work.request?.ticketNo || "-"}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <WorkOrderStatusBadge status={work.status} />
+            <RequestPriorityBadge priority={work.priority} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <PreviewField label="Department" value={work.departmentCode} />
+          <PreviewField label="Location" value={work.request?.location || work.asset?.location || work.asset?.buildingCode || work.location} />
+          <PreviewField label="Category / Service" value={work.serviceCode || work.type || work.request?.category} />
+          <PreviewField label="Assigned Team" value={work.assignedTeamCode} />
+          <PreviewField label="Assigned Member" value={work.assignedTo?.name || work.assignedTo?.email} />
+          <PreviewField label="Due Date" value={formatDateCell(work.dueAt)} />
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-lg bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase text-slate-500">Request Details</p>
+            <p className="mt-2 text-sm font-black text-slate-700">{work.request?.title || work.title}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm font-bold text-slate-600">{work.request?.description || work.jobPlan || "-"}</p>
+            <p className="mt-3 text-xs font-black text-slate-500">Requester: {work.request?.requester || "-"}</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase text-slate-500">Service Team Updates</p>
+            <div className="mt-2 grid gap-2">
+              <PreviewField label="Work Notes" value={work.workNotes} />
+              <PreviewField label="Parts / Materials Requested" value={work.materialRequest} />
+              <PreviewField label="Assets Used" value={work.assetsUsed} />
+              <PreviewField label="Inventory Used" value={work.inventoryUsed} />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase text-slate-500">Attachments & Image Gallery</p>
+              {activeImage && (
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black">Zoom -</button>
+                  <button type="button" onClick={() => setZoom((value) => Math.min(3, value + 0.25))} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black">Zoom +</button>
+                  <a href={activeImage} download className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Download</a>
+                </div>
+              )}
+            </div>
+            {activeImage ? (
+              <div className="mt-3 grid place-items-center overflow-auto rounded-lg bg-slate-950/90 p-4">
+                <img src={activeImage} alt="Work order proof preview" style={{ transform: `scale(${zoom})` }} className="max-h-[420px] max-w-full origin-center rounded-lg object-contain transition-transform" />
+              </div>
+            ) : (
+              <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-500">No image proof uploaded.</p>
+            )}
+            {images.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-5">
+                {images.map((url) => (
+                  <button key={url} type="button" onClick={() => { setActiveImage(url); setZoom(1); }} className={`overflow-hidden rounded-lg border ${activeImage === url ? "border-lagoon ring-2 ring-lagoon/20" : "border-slate-200"}`}>
+                    <img src={url} alt="Attachment thumbnail" className="h-20 w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {files.length > 0 && (
+              <div className="mt-3 grid gap-2">
+                {files.map((file) => (
+                  <div key={file} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm font-bold">
+                    <span className="break-all">{file}</span>
+                    <a href={file} download className="text-lagoon">Download</a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-3">
+            <div className="rounded-lg bg-amber-50 p-4">
+              <p className="text-xs font-black uppercase text-amber-700">Supervisor Review</p>
+              <PreviewField label="Reopen Reason" value={work.rejectionReason} />
+              <div className="mt-2">
+                <PreviewField label="Closing / Review Remarks" value={work.supervisorDecision} />
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase text-slate-500">Timeline</p>
+              <div className="mt-2 grid gap-2">
+                {timelineRows.map(([label, value]) => <PreviewField key={label} label={label} value={formatDateCell(value as string)} />)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-2 rounded-lg bg-slate-50 p-4 md:grid-cols-3">
+          {workTimingRows(work).map(([label, value]) => <PreviewField key={label} label={label} value={label.includes("Time") ? formatDateCell(value as string) : value} />)}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+          {onEdit && <button type="button" onClick={onEdit} className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white">Edit</button>}
+          {onReopenWork && <button type="button" onClick={onReopenWork} className="rounded-lg bg-amber-600 px-4 py-3 text-sm font-black text-white">Reopen Work Order</button>}
+          {onCloseWork && <button type="button" onClick={onCloseWork} className="rounded-lg bg-ink px-4 py-3 text-sm font-black text-white">Close Work Order</button>}
+        </div>
+      </div>
+    </RequestModalShell>
+  );
+}
+
+function WorkOrderSupervisorReviewModal({
+  work,
+  action,
+  teams,
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  work: any;
+  action: "close" | "reopen";
+  teams: any[];
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (formData: FormData) => Promise<void> | void;
+}) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(new FormData(event.currentTarget));
+  }
+  const isReopen = action === "reopen";
+
+  return (
+    <RequestModalShell title={`${isReopen ? "Reopen" : "Close"} Work Order: ${work.woNo}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="grid gap-4">
+        <input type="hidden" name="status" value={isReopen ? "REOPENED" : "CLOSED"} />
+        <div className="rounded-lg bg-slate-50 p-4">
+          <p className="text-lg font-black">{work.title}</p>
+          <p className="mt-1 text-sm font-bold text-slate-500">{work.departmentCode || "-"} / {work.assignedTeamCode || "No team assigned"}</p>
+        </div>
+        {isReopen ? (
+          <>
+            <label className="grid gap-2 text-sm font-black text-slate-600">
+              Reopen Reason
+              <input name="rejectionReason" required placeholder="Why completion is rejected" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-600">
+              Remarks / Instructions
+              <textarea name="supervisorDecision" required placeholder="Instructions for service team before resubmitting" className="min-h-28 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+            </label>
+            <label className="grid gap-2 text-sm font-black text-slate-600">
+              Reassigned Service Team
+              <select name="assignedTeamCode" defaultValue={work.assignedTeamCode ?? ""} className="h-11 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon">
+                <option value="">Keep unassigned</option>
+                {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
+              </select>
+            </label>
+          </>
+        ) : (
+          <label className="grid gap-2 text-sm font-black text-slate-600">
+            Final Remarks
+            <textarea name="supervisorDecision" placeholder="Final verification remarks. Closing time and supervisor are captured automatically." className="min-h-28 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+          </label>
+        )}
+        <button disabled={saving} className={`h-11 rounded-lg font-black text-white disabled:bg-slate-400 ${isReopen ? "bg-amber-600" : "bg-ink"}`}>
+          {saving ? "Saving..." : isReopen ? "Reopen Work Order" : "Close Work Order"}
+        </button>
+      </form>
+    </RequestModalShell>
+  );
+}
+
 function PreviewField({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="rounded-lg bg-slate-50 p-3">
@@ -1880,6 +2107,7 @@ function WorkOrderStatusBadge({ status }: { status: string }) {
   const tone =
     status === "CLOSED" || status === "VERIFIED" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
     status === "IN_PROGRESS" || status === "ASSIGNED" ? "bg-cyan-50 text-cyan-700 border-cyan-200" :
+    status === "PENDING_SUPERVISOR_REVIEW" ? "bg-violet-50 text-violet-700 border-violet-200" :
     status === "ON_HOLD" || status === "REOPENED" ? "bg-amber-50 text-amber-700 border-amber-200" :
     status === "REJECTED" ? "bg-rose-50 text-rose-700 border-rose-200" :
     "bg-slate-50 text-slate-700 border-slate-200";
@@ -2026,7 +2254,7 @@ function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string;
         <select name="priority" defaultValue={work?.priority ?? "MEDIUM"} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
         </select>
-        {work && <select name="status" defaultValue={work.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon"><option>PENDING_ASSIGNMENT</option><option>ASSIGNED</option><option>ACCEPTED</option><option>REJECTED</option><option>IN_PROGRESS</option><option>ON_HOLD</option><option>COMPLETED</option><option>VERIFIED</option><option>REOPENED</option><option>CLOSED</option></select>}
+        {work && <select name="status" defaultValue={work.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon"><option>PENDING_ASSIGNMENT</option><option>ASSIGNED</option><option>ACCEPTED</option><option>REJECTED</option><option>IN_PROGRESS</option><option>ON_HOLD</option><option>COMPLETED</option><option>PENDING_SUPERVISOR_REVIEW</option><option>VERIFIED</option><option>REOPENED</option><option>CLOSED</option></select>}
         <textarea name="jobPlan" defaultValue={work?.jobPlan ?? ""} placeholder="Job plan / work steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <textarea name="safetyNotes" defaultValue={work?.safetyNotes ?? ""} placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <ImageUploadField name="photoUrls" defaultValue={work?.photoUrls ?? ""} />
@@ -2069,9 +2297,9 @@ function WorkExecutionForm({ work, onSubmit, saving }: { work: any; onSubmit: (f
       <p className="mt-1 text-sm font-bold text-slate-500">{work.woNo} / {work.title}</p>
       <div className="mt-4 grid gap-3">
         <select name="status" defaultValue={work.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
-          <option>IN_PROGRESS</option>
-          <option>ON_HOLD</option>
-          <option>COMPLETED</option>
+          <option value="IN_PROGRESS">In Progress</option>
+          <option value="ON_HOLD">On Hold</option>
+          <option value="COMPLETED">Completed - Submit for Supervisor Review</option>
         </select>
         <textarea name="workNotes" defaultValue={work.workNotes ?? ""} placeholder="Work description / notes" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <ImageUploadField name="photoUrls" defaultValue={work.photoUrls ?? ""} />

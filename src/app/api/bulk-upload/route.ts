@@ -422,8 +422,8 @@ function assetStatus(value: string | undefined) {
 
 function workStatus(value: string | undefined, fallback: "NEW" | "ASSIGNED") {
   const normalized = String(value || fallback).toUpperCase();
-  return ["NEW", "TRIAGED", "ASSIGNED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CLOSED"].includes(normalized)
-    ? normalized as "NEW" | "TRIAGED" | "ASSIGNED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "CLOSED"
+  return ["NEW", "TRIAGED", "ASSIGNED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "PENDING_SUPERVISOR_REVIEW", "REOPENED", "CLOSED"].includes(normalized)
+    ? normalized as "NEW" | "TRIAGED" | "ASSIGNED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "PENDING_SUPERVISOR_REVIEW" | "REOPENED" | "CLOSED"
     : fallback;
 }
 
