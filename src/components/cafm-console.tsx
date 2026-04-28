@@ -1348,6 +1348,7 @@ function Helpdesk({
 }) {
   const [editing, setEditing] = useState<any | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [previewRequest, setPreviewRequest] = useState<any | null>(null);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(requests[0]?.id ?? null);
   const [requestAction, setRequestAction] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Record<string, { assignedTeamCode: string; assignedToEmail: string }>>({});
@@ -1488,7 +1489,7 @@ function Helpdesk({
                     <td className="px-3 py-3">
                       <div className="flex min-w-[260px] flex-wrap gap-2">
                         {isSupervisorView && permissions.manageRequests && <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedRequestId(request.id); setEditing(request); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Edit</button>}
-                        {isSupervisorView && permissions.approveRequests && <button type="button" disabled={requestAction === `${request.id}:review`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:review`, request, () => updateRequest(request.id, requestFormData(request, "TRIAGED", "", { assignedTeamCode: assignment.assignedTeamCode }))); }} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:review` ? "Saving..." : "Review"}</button>}
+                        <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedRequestId(request.id); setPreviewRequest(request); }} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white">Preview</button>
                         {isSupervisorView && permissions.manageRequests && <button type="button" disabled={Boolean(request.workOrder) || requestAction === `${request.id}:wo`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:wo`, request, () => convertRequest(request.id, { assignedTeamCode: assignment.assignedTeamCode })); }} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:wo` ? "Creating..." : request.workOrder ? "WO Created" : "Create WO"}</button>}
                         {isSupervisorView && permissions.approveRequests && <button type="button" disabled={requestAction === `${request.id}:reject`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:reject`, request, () => updateRequest(request.id, requestFormData(request, "REJECTED", "Rejected by supervisor/helpdesk", { assignedTeamCode: assignment.assignedTeamCode }))); }} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:reject` ? "Saving..." : "Reject"}</button>}
                         {isSupervisorView && permissions.manageRequests && <button type="button" disabled={requestAction === `${request.id}:delete`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:delete`, request, () => deleteRequest(request.id)); }} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:delete` ? "Deleting..." : "Delete"}</button>}
@@ -1515,42 +1516,6 @@ function Helpdesk({
           <PaginationControls page={currentPage} totalPages={totalPages} onPageChange={setPage} totalItems={filteredRequests.length} />
         </div>
 
-        <div className="mt-4 grid gap-2">
-          {visibleRequests.map((request) => {
-            const assignment = assignmentFor(request);
-            return (
-              <div
-                key={request.id}
-                onClick={() => setSelectedRequestId(request.id)}
-                className={`grid cursor-pointer gap-3 rounded-lg p-3 ${
-                  selectedRequest?.id === request.id ? "bg-indigo-50 ring-2 ring-indigo-100" : "bg-slate-50"
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-bold">{request.ticketNo} / {request.title}</span>
-                  <div className="flex flex-wrap gap-2">
-                    {isSupervisorView && permissions.manageRequests && <button onClick={(event) => { event.stopPropagation(); setSelectedRequestId(request.id); setEditing(request); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Edit</button>}
-                    {isSupervisorView && permissions.approveRequests && <button disabled={requestAction === `${request.id}:review`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:review`, request, () => updateRequest(request.id, requestFormData(request, "TRIAGED", "", { assignedTeamCode: assignment.assignedTeamCode }))); }} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:review` ? "Saving..." : "Review"}</button>}
-                    {isSupervisorView && permissions.manageRequests && <button disabled={Boolean(request.workOrder) || requestAction === `${request.id}:wo`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:wo`, request, () => convertRequest(request.id, { assignedTeamCode: assignment.assignedTeamCode })); }} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:wo` ? "Creating..." : request.workOrder ? "WO Created" : "Create WO"}</button>}
-                    {isSupervisorView && permissions.approveRequests && <button disabled={requestAction === `${request.id}:reject`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:reject`, request, () => updateRequest(request.id, requestFormData(request, "REJECTED", "Rejected by supervisor/helpdesk", { assignedTeamCode: assignment.assignedTeamCode }))); }} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:reject` ? "Saving..." : "Reject"}</button>}
-                    {isSupervisorView && permissions.manageRequests && <button disabled={requestAction === `${request.id}:delete`} onClick={(event) => { event.stopPropagation(); runRequestAction(`${request.id}:delete`, request, () => deleteRequest(request.id)); }} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">{requestAction === `${request.id}:delete` ? "Deleting..." : "Delete"}</button>}
-                  </div>
-                </div>
-                {isSupervisorView && permissions.manageRequests && <div className="grid gap-2 md:grid-cols-1">
-                  <select
-                    value={assignment.assignedTeamCode}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={(event) => setAssignment(request.id, { assignedTeamCode: event.target.value, assignedToEmail: "" })}
-                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-lagoon"
-                  >
-                    <option value="">Assign service team</option>
-                    {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
-                  </select>
-                </div>}
-              </div>
-            );
-          })}
-        </div>
         {selectedRequest && (
           <div className="mt-5">
             <DetailPanel
@@ -1609,6 +1574,28 @@ function Helpdesk({
             mode="modal"
           />
         </RequestModalShell>
+      )}
+      {previewRequest && (
+        <RequestPreviewModal
+          request={previewRequest}
+          teams={teams}
+          assignment={assignmentFor(previewRequest)}
+          canManage={isSupervisorView && permissions.manageRequests}
+          canApprove={isSupervisorView && permissions.approveRequests}
+          savingKey={requestAction}
+          onClose={() => setPreviewRequest(null)}
+          onEdit={() => {
+            setPreviewRequest(null);
+            setEditing(previewRequest);
+          }}
+          onAssignTeam={(value) => setAssignment(previewRequest.id, { assignedTeamCode: value, assignedToEmail: "" })}
+          onReview={() => runRequestAction(`${previewRequest.id}:review`, previewRequest, () => updateRequest(previewRequest.id, requestFormData(previewRequest, "TRIAGED", "", { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode })))}
+          onCreateWorkOrder={async () => {
+            await runRequestAction(`${previewRequest.id}:wo`, previewRequest, () => convertRequest(previewRequest.id, { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode }));
+            setPreviewRequest(null);
+          }}
+          onReject={() => runRequestAction(`${previewRequest.id}:reject`, previewRequest, () => updateRequest(previewRequest.id, requestFormData(previewRequest, "REJECTED", "Rejected by supervisor/helpdesk", { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode })))}
+        />
       )}
     </section>
   );
@@ -1729,6 +1716,125 @@ function RequestModalShell({ title, onClose, children }: { title: string; onClos
       </div>
     </div>
   );
+}
+
+function RequestPreviewModal({
+  request,
+  teams,
+  assignment,
+  canManage,
+  canApprove,
+  savingKey,
+  onClose,
+  onEdit,
+  onAssignTeam,
+  onReview,
+  onCreateWorkOrder,
+  onReject,
+}: {
+  request: any;
+  teams: any[];
+  assignment: { assignedTeamCode: string; assignedToEmail: string };
+  canManage: boolean;
+  canApprove: boolean;
+  savingKey: string | null;
+  onClose: () => void;
+  onEdit: () => void;
+  onAssignTeam: (value: string) => void;
+  onReview: () => Promise<void> | void;
+  onCreateWorkOrder: () => Promise<void> | void;
+  onReject: () => Promise<void> | void;
+}) {
+  const images = attachmentList(request.attachmentUrls);
+
+  return (
+    <RequestModalShell title={`Request Preview: ${request.ticketNo}`} onClose={onClose}>
+      <div className="grid gap-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-2xl font-black">{request.title}</h3>
+            <p className="mt-1 text-sm font-bold text-slate-500">{request.ticketNo} / {request.requester || "Requester"}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <RequestStatusBadge status={request.status} />
+            <RequestPriorityBadge priority={request.priority} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <PreviewField label="Category" value={request.category} />
+          <PreviewField label="Department" value={request.departmentCode} />
+          <PreviewField label="Service" value={request.serviceCode} />
+          <PreviewField label="Location" value={request.location} />
+          <PreviewField label="Created" value={formatDateCell(request.createdAt)} />
+          <PreviewField label="Needed by" value={formatDateCell(request.dueAt)} />
+          <PreviewField label="Supervisor" value={request.assignedSupervisorEmail} />
+          <PreviewField label="Linked Work Order" value={request.workOrder?.woNo} />
+        </div>
+
+        <div className="rounded-lg bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase text-slate-500">Description</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm font-bold text-slate-700">{request.description || "-"}</p>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-black uppercase text-slate-500">Images / Attachments</p>
+          {images.length ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {images.map((url) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  {isImageUrl(url) ? <img src={url} alt="Request attachment" className="h-36 w-full object-cover" /> : <span className="block p-3 text-sm font-bold text-lagoon">{url}</span>}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-500">No images attached.</p>
+          )}
+        </div>
+
+        {canManage && (
+          <label className="grid gap-2 text-sm font-black text-slate-600">
+            Assign service team before creating work order
+            <select
+              value={assignment.assignedTeamCode}
+              onChange={(event) => onAssignTeam(event.target.value)}
+              className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-lagoon"
+            >
+              <option value="">Assign service team</option>
+              {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
+            </select>
+          </label>
+        )}
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+          {canManage && <button type="button" onClick={onEdit} className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white">Edit</button>}
+          {canApprove && <button type="button" disabled={savingKey === `${request.id}:review`} onClick={onReview} className="rounded-lg bg-slate-700 px-4 py-3 text-sm font-black text-white disabled:bg-slate-400">{savingKey === `${request.id}:review` ? "Saving..." : "Mark Reviewed"}</button>}
+          {canManage && <button type="button" disabled={Boolean(request.workOrder) || savingKey === `${request.id}:wo`} onClick={onCreateWorkOrder} className="rounded-lg bg-ink px-4 py-3 text-sm font-black text-white disabled:bg-slate-400">{savingKey === `${request.id}:wo` ? "Creating..." : request.workOrder ? "WO Created" : "Create Work Order"}</button>}
+          {canApprove && <button type="button" disabled={savingKey === `${request.id}:reject`} onClick={onReject} className="rounded-lg bg-amber-600 px-4 py-3 text-sm font-black text-white disabled:bg-slate-400">Reject</button>}
+        </div>
+      </div>
+    </RequestModalShell>
+  );
+}
+
+function PreviewField({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="rounded-lg bg-slate-50 p-3">
+      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+      <p className="mt-1 break-words text-sm font-black text-slate-700">{String(value || "-")}</p>
+    </div>
+  );
+}
+
+function attachmentList(value: unknown) {
+  return String(value || "")
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isImageUrl(value: string) {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(value) || value.startsWith("/uploads/");
 }
 
 function RequestStatusBadge({ status }: { status: string }) {
