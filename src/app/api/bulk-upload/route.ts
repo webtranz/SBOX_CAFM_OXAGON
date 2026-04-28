@@ -59,15 +59,28 @@ async function firstSite() {
 
 async function importAsset(row: Row) {
   const site = await firstSite();
-  const tag = value(row, "tag", "ASSET NUMBER", "assetNumber");
-  if (!tag) throw new Error("tag or ASSET NUMBER is required");
-  const name = value(row, "name", "Asset Description", "Asset Description ", "assetDescription") || tag;
-  const category = value(row, "category", "Asset Group", "Asset Group ", "assetGroup") || "HVAC";
-  const system = value(row, "system", "Asset Description", "Asset Description ") || category;
-  const floor = value(row, "floor", "FLOOR") || "Unassigned";
-  const room = value(row, "room", "ROOM", "ROOM ") || "Unassigned";
-  const departmentCode = value(row, "departmentCode", "Department") || "";
-  const cost = number(row.purchaseCost, 0);
+  const tag = value(row, "tag", "ASSET NUMBER", "assetNumber", "Asset Code");
+  if (!tag) throw new Error("Asset Code or ASSET NUMBER is required");
+  const locationName = value(row, "Location Name", "location", "ROOM", "room") || "Unassigned";
+  const locationParts = locationName.split(/[>/,-]/).map((part) => part.trim()).filter(Boolean);
+  const name = value(row, "name", "Asset Name", "Asset Description", "Asset Description ", "assetDescription") || tag;
+  const description = value(row, "Description", "Additional description", "additionalDescription");
+  const category = value(row, "category", "Asset Type", "Asset Group", "Asset Group ", "assetGroup") || "General";
+  const system = value(row, "system", "Entity Name", "Asset Type") || category;
+  const floor = value(row, "floor", "FLOOR") || locationParts.find((part) => /floor/i.test(part)) || "Unassigned";
+  const room = value(row, "room", "ROOM", "ROOM ") || locationParts.at(-1) || "Unassigned";
+  const departmentCode = value(row, "departmentCode", "Department", "Assigned To") || "";
+  const cost = number(value(row, "purchaseCost", "Purchase Cost"), 0);
+  const replacementCost = number(value(row, "replacementCost", "Replacement Cost"), cost);
+  const lifeMonths = integer(value(row, "Life Expectancy (in months)", "lifeExpectancyMonths"), 96);
+  const installDate = date(value(row, "installDate", "Purchase Date"), new Date());
+  const documentationUrl = [value(row, "documentationUrl", "URL 1"), value(row, "URL 2")].filter(Boolean).join("\n") || null;
+  const remarks = [
+    value(row, "remarks", "Remarks"),
+    value(row, "Vendors") ? `Vendors: ${value(row, "Vendors")}` : "",
+    value(row, "Parts") ? `Parts: ${value(row, "Parts")}` : "",
+    replacementCost ? `Replacement Cost: ${replacementCost}` : "",
+  ].filter(Boolean).join("\n");
   const asset = await prisma.asset.upsert({
     where: { tag },
     update: {
@@ -76,28 +89,30 @@ async function importAsset(row: Row) {
       system,
       criticality: priority(row.criticality),
       status: assetStatus(row.status),
-      serialNumber: row.serialNumber || `${tag}-SN`,
+      serialNumber: value(row, "serialNumber", "Serial No.") || `${tag}-SN`,
       siteCode: value(row, "siteCode", "SITE"),
       zone: value(row, "zone", "ZONE"),
       buildingCode: value(row, "buildingCode", "BLDG"),
       assetGroup: category,
       assetDescription: name,
-      additionalDescription: value(row, "additionalDescription", "Additional description", "Additional description "),
+      additionalDescription: description,
       parentAsset: value(row, "parentAsset", "Parent Asset", "Parent Asset ") || "TOP LEVEL",
       departmentCode,
-      remarks: value(row, "remarks", "Remarks"),
-      manufacturer: row.manufacturer || "Not specified",
-      model: row.model || "Not specified",
+      remarks,
+      manufacturer: value(row, "manufacturer", "Manufacturer") || "Not specified",
+      model: value(row, "model", "Model No.") || "Not specified",
       floor,
       room,
-      warrantyExpiry: date(row.warrantyExpiry, addYears(new Date(), 1)),
-      contractRef: row.contractRef || "Not assigned",
-      documentationUrl: row.documentationUrl || null,
+      installDate,
+      replacementDate: addDays(installDate, lifeMonths * 30),
+      warrantyExpiry: date(value(row, "warrantyExpiry", "Warranty Expiry Date"), addYears(new Date(), 1)),
+      contractRef: value(row, "contractRef", "Vendors") || "Not assigned",
+      documentationUrl,
       purchaseCost: cost,
-      salvageValue: number(row.salvageValue, Math.round(cost * 0.1)),
+      salvageValue: number(value(row, "salvageValue", "Salvage Value"), Math.round(cost * 0.1)),
       depreciationRate: number(row.depreciationRate, 10),
       conditionScore: number(row.conditionScore, 85),
-      qrCode: `CAFM-ASSET:${tag}`,
+      qrCode: value(row, "qrCode", "QR Code") || `CAFM-ASSET:${tag}`,
     },
     create: {
       tag,
@@ -106,30 +121,30 @@ async function importAsset(row: Row) {
       system,
       criticality: priority(row.criticality),
       status: assetStatus(row.status),
-      serialNumber: row.serialNumber || `${tag}-SN`,
+      serialNumber: value(row, "serialNumber", "Serial No.") || `${tag}-SN`,
       siteCode: value(row, "siteCode", "SITE"),
       zone: value(row, "zone", "ZONE"),
       buildingCode: value(row, "buildingCode", "BLDG"),
       assetGroup: category,
       assetDescription: name,
-      additionalDescription: value(row, "additionalDescription", "Additional description", "Additional description "),
+      additionalDescription: description,
       parentAsset: value(row, "parentAsset", "Parent Asset", "Parent Asset ") || "TOP LEVEL",
       departmentCode,
-      remarks: value(row, "remarks", "Remarks"),
-      manufacturer: row.manufacturer || "Not specified",
-      model: row.model || "Not specified",
-      installDate: date(row.installDate, new Date()),
-      replacementDate: date(row.replacementDate, addYears(new Date(), 8)),
-      warrantyExpiry: date(row.warrantyExpiry, addYears(new Date(), 1)),
-      contractRef: row.contractRef || "Not assigned",
-      documentationUrl: row.documentationUrl || null,
+      remarks,
+      manufacturer: value(row, "manufacturer", "Manufacturer") || "Not specified",
+      model: value(row, "model", "Model No.") || "Not specified",
+      installDate,
+      replacementDate: addDays(installDate, lifeMonths * 30),
+      warrantyExpiry: date(value(row, "warrantyExpiry", "Warranty Expiry Date"), addYears(new Date(), 1)),
+      contractRef: value(row, "contractRef", "Vendors") || "Not assigned",
+      documentationUrl,
       purchaseCost: cost,
-      salvageValue: number(row.salvageValue, Math.round(cost * 0.1)),
+      salvageValue: number(value(row, "salvageValue", "Salvage Value"), Math.round(cost * 0.1)),
       depreciationRate: number(row.depreciationRate, 10),
       conditionScore: number(row.conditionScore, 85),
       floor,
       room,
-      qrCode: `CAFM-ASSET:${tag}`,
+      qrCode: value(row, "qrCode", "QR Code") || `CAFM-ASSET:${tag}`,
       siteId: site.id,
       buildingId: site.buildings[0]?.id,
     },

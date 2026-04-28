@@ -584,6 +584,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               saving={saving}
               submitAsset={(formData) => postRecord("/api/assets", formData, "Asset")}
               updateAsset={updateAsset}
+              submitWorkOrder={submitWorkOrder}
             />
           )}
           {canViewActive && active === "work" && (
@@ -778,6 +779,7 @@ function Assets({
   setQuery,
   submitAsset,
   updateAsset,
+  submitWorkOrder,
   saving,
 }: {
   assets: any[];
@@ -787,72 +789,125 @@ function Assets({
   setQuery: (value: string) => void;
   submitAsset: (formData: FormData) => void;
   updateAsset: (id: string, formData: FormData) => void;
+  submitWorkOrder: (formData: FormData) => void;
   saving: boolean;
 }) {
+  const [previewAsset, setPreviewAsset] = useState<any | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterField, setFilterField] = useState("name");
+  const [filterValue, setFilterValue] = useState("");
+  const filtered = assets.filter((asset) => {
+    const text = String(asset[filterField] ?? asset.assetDescription ?? asset.name ?? "").toLowerCase();
+    return !filterValue || text.includes(filterValue.toLowerCase());
+  });
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(assets.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const visibleAssets = assets.slice(startIndex, startIndex + PAGE_SIZE);
+  const visibleAssets = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+  const filterOptions = [
+    ["name", "Name"],
+    ["assetGroup", "Asset Type"],
+    ["room", "Location"],
+    ["manufacturer", "Manufacturer"],
+    ["model", "Model"],
+    ["additionalDescription", "Description"],
+    ["status", "Status"],
+    ["parentAsset", "Parent Asset"],
+    ["qrCode", "QR Code"],
+    ["serialNumber", "Serial No."],
+  ];
 
   useEffect(() => {
     setPage(1);
-  }, [query, assets.length]);
+  }, [query, assets.length, filterField, filterValue]);
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
-      <Panel title="Enterprise Asset Register" icon={Building2}>
+    <section className="grid gap-5">
+      <Panel title="Assets" icon={Building2}>
         <ReportButtons type="assets" label="Assets report" />
-        <div className="mb-4 flex h-12 items-center gap-3 rounded-lg border border-slate-200 bg-white px-3">
-          <Search size={18} className="text-slate-400" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by tag, asset, category or system" className="w-full outline-none" />
-        </div>
-      <div className="grid gap-3">
-          <div className="rounded-lg bg-lagoon/5 p-3 text-sm font-black text-lagoon">
-            Showing {visibleAssets.length} of {assets.length} uploaded / registered assets
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <button type="button" onClick={() => setFilterOpen((current) => !current)} className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white">Filters</button>
+          <div className="flex min-w-[280px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 lg:max-w-md">
+            <Search size={18} className="text-slate-400" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Assets" className="h-11 w-full outline-none" />
           </div>
-          {visibleAssets.map((asset, index) => (
-            <button
-              key={asset.id}
-              onClick={() => setSelectedAssetId(asset.id)}
-              className={`grid gap-2 rounded-lg border p-4 text-left transition ${selectedAsset?.id === asset.id ? "border-lagoon bg-lagoon/5" : "border-slate-200 bg-white hover:bg-slate-50"}`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-start gap-3">
-                  <span className="grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-600">
-                    {startIndex + index + 1}
-                  </span>
-                  <div>
-                  <p className="font-black">{asset.tag} | {asset.assetDescription ?? asset.name}</p>
-                  <p className="text-sm text-slate-500">{asset.assetGroup ?? asset.category} / {asset.system}</p>
-                  </div>
-                </div>
-                <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black">{asset.status}</span>
-              </div>
-              <div className="grid gap-2 text-sm text-slate-600 md:grid-cols-4">
-                <span>Site: {asset.siteCode ?? "-"}</span>
-                <span>Zone: {asset.zone ?? "-"}</span>
-                <span>BLDG: {asset.buildingCode ?? asset.building?.name ?? "-"}</span>
-                <span>Floor: {asset.floor ?? "-"}</span>
-                <span>Room: {asset.room ?? "-"}</span>
-                <span>Dept: {asset.departmentCode ?? "-"}</span>
-                <span>Parent: {asset.parentAsset ?? "-"}</span>
-                <span>Health: {asset.conditionScore}%</span>
-              </div>
-            </button>
-          ))}
-          <PaginationControls page={currentPage} totalPages={totalPages} onPageChange={setPage} totalItems={assets.length} />
+          <button type="button" onClick={() => setCreateOpen(true)} className="flex h-11 items-center gap-2 rounded-lg bg-lagoon px-4 text-sm font-black text-white"><Plus size={16} /> Asset</button>
         </div>
-      </Panel>
-      <div className="space-y-5">
-        {selectedAsset && <AssetIdentity asset={selectedAsset} />}
-        {selectedAsset && <AssetHistoryPanel asset={selectedAsset} />}
-        <AssetCreateForm onSubmit={submitAsset} saving={saving} />
-        {selectedAsset && (
-          <AssetEditForm asset={selectedAsset} saving={saving} onSubmit={(formData) => updateAsset(selectedAsset.id, formData)} />
+        {filterOpen && (
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4 shadow-lift">
+            <p className="text-sm font-black">Filters</p>
+            <p className="mt-3 text-sm font-bold text-slate-500">In this view, show assets</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-[220px_1fr_auto_auto]">
+              <select value={filterField} onChange={(event) => setFilterField(event.target.value)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold">
+                {filterOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <input value={filterValue} onChange={(event) => setFilterValue(event.target.value)} placeholder="Pick up a property to filter" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+              <button type="button" onClick={() => { setFilterValue(""); setFilterOpen(false); }} className="rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-600">Cancel</button>
+              <button type="button" onClick={() => setFilterOpen(false)} className="rounded-lg bg-lagoon px-4 text-sm font-black text-white">Apply</button>
+            </div>
+          </div>
         )}
-      </div>
+        <div className="overflow-auto rounded-lg border border-slate-200">
+          <table className="min-w-[1500px] border-collapse bg-white text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-3"><input type="checkbox" /></th>
+                <th className="px-3 py-3">Name</th>
+                <th className="px-3 py-3">Asset Type</th>
+                <th className="px-3 py-3">Location</th>
+                <th className="px-3 py-3">Manufacturer</th>
+                <th className="px-3 py-3">Model</th>
+                <th className="px-3 py-3">URL</th>
+                <th className="px-3 py-3">Description</th>
+                <th className="px-3 py-3">Serial No.</th>
+                <th className="px-3 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleAssets.map((asset) => (
+                <tr key={asset.id} onClick={() => { setSelectedAssetId(asset.id); setPreviewAsset(asset); }} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50">
+                  <td className="px-3 py-3"><input type="checkbox" onClick={(event) => event.stopPropagation()} /></td>
+                  <td className="px-3 py-3 font-black text-ink">{asset.assetDescription ?? asset.name}</td>
+                  <td className="px-3 py-3">{asset.assetGroup ?? asset.category}</td>
+                  <td className="px-3 py-3 text-lagoon">{[asset.buildingCode, asset.floor, asset.room].filter(Boolean).join(" > ") || "-"}</td>
+                  <td className="px-3 py-3">{asset.manufacturer}</td>
+                  <td className="px-3 py-3">{asset.model}</td>
+                  <td className="px-3 py-3 text-lagoon">{asset.documentationUrl ? <a href={String(asset.documentationUrl).split(/\s+/)[0]} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>{asset.assetDescription ?? asset.name}</a> : "-"}</td>
+                  <td className="max-w-[360px] px-3 py-3"><div className="line-clamp-2">{asset.additionalDescription || asset.remarks || "-"}</div></td>
+                  <td className="px-3 py-3">{asset.serialNumber || "-"}</td>
+                  <td className="px-3 py-3"><span className="rounded-full bg-lime-100 px-2 py-1 text-xs font-black text-lime-700">{asset.status === "ACTIVE" ? "Online" : asset.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3"><PaginationControls page={currentPage} totalPages={totalPages} onPageChange={setPage} totalItems={filtered.length} /></div>
+      </Panel>
+      {createOpen && <RequestModalShell title="Add Asset" onClose={() => setCreateOpen(false)}><AssetCreateForm onSubmit={async (formData) => { await submitAsset(formData); setCreateOpen(false); }} saving={saving} /></RequestModalShell>}
+      {previewAsset && (
+        <AssetPreviewModal
+          asset={previewAsset}
+          onClose={() => setPreviewAsset(null)}
+          onEdit={() => setPreviewAsset({ ...previewAsset, editing: true })}
+          onCreateWorkOrder={() => {
+            const formData = new FormData();
+            formData.set("title", `Work Order - ${previewAsset.assetDescription || previewAsset.name}`);
+            formData.set("type", "Corrective");
+            formData.set("assetTag", previewAsset.tag);
+            formData.set("assetType", previewAsset.assetGroup || previewAsset.category || "");
+            formData.set("departmentCode", previewAsset.departmentCode || "");
+            formData.set("priority", "MEDIUM");
+            formData.set("jobPlan", `Inspect and resolve issue for ${previewAsset.assetDescription || previewAsset.name}`);
+            formData.set("safetyNotes", "Follow site safety procedures.");
+            submitWorkOrder(formData);
+          }}
+        >
+          {previewAsset.editing && <AssetEditForm asset={previewAsset} saving={saving} onSubmit={(formData) => updateAsset(previewAsset.id, formData)} />}
+        </AssetPreviewModal>
+      )}
     </section>
   );
 }
@@ -865,12 +920,30 @@ function AssetCreateForm({ onSubmit, saving }: { onSubmit: (formData: FormData) 
     const assetNumber = String(formData.get("tag") ?? "").trim();
     const assetDescription = String(formData.get("assetDescription") ?? "").trim();
     const assetGroup = String(formData.get("assetGroup") ?? "").trim();
+    const lifeMonths = Number(formData.get("lifeExpectancyMonths") || 96);
+    const purchaseDate = String(formData.get("installDate") || "");
+    const url1 = String(formData.get("documentationUrl") || "").trim();
+    const url2 = String(formData.get("documentationUrl2") || "").trim();
+    const vendors = String(formData.get("contractRef") || "").trim();
+    const parts = String(formData.get("remarks") || "").trim();
+    const replacementCost = String(formData.get("replacementCost") || "").trim();
 
     formData.set("name", assetDescription || assetNumber);
-    formData.set("category", assetGroup || "HVAC");
-    formData.set("system", assetDescription || assetGroup || "HVAC");
+    formData.set("category", assetGroup || "General");
+    formData.set("system", String(formData.get("system") || assetGroup || "General"));
     formData.set("criticality", "MEDIUM");
     formData.set("conditionScore", "85");
+    if (purchaseDate) {
+      const replacement = new Date(purchaseDate);
+      replacement.setMonth(replacement.getMonth() + (Number.isFinite(lifeMonths) ? lifeMonths : 96));
+      formData.set("replacementDate", replacement.toISOString().slice(0, 10));
+    }
+    formData.set("documentationUrl", [url1, url2].filter(Boolean).join("\n"));
+    formData.set("remarks", [
+      parts ? `Parts: ${parts}` : "",
+      vendors ? `Vendors: ${vendors}` : "",
+      replacementCost ? `Replacement Cost: ${replacementCost}` : "",
+    ].filter(Boolean).join("\n"));
 
     await onSubmit(formData);
     form.reset();
@@ -884,30 +957,42 @@ function AssetCreateForm({ onSubmit, saving }: { onSubmit: (formData: FormData) 
         </div>
         <div>
           <h3 className="text-xl font-black">Register Asset</h3>
-          <p className="text-sm font-bold text-slate-500">HVAC Asset Register template fields</p>
+          <p className="text-sm font-bold text-slate-500">Manual entry using the asset bulk upload template fields</p>
         </div>
       </div>
       <div className="grid gap-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <AssetTextField label="SITE" name="siteCode" />
-          <AssetTextField label="ZONE" name="zone" />
-          <AssetTextField label="BLDG" name="buildingCode" />
+        <AssetTextField label="Entity Name" name="system" />
+        <AssetTextField label="Asset Name" name="assetDescription" />
+        <AssetTextField label="Description" name="additionalDescription" />
+        <AssetTextField label="Location Name" name="room" />
+        <AssetTextField label="Asset Type" name="assetGroup" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <AssetTextField label="Model No." name="model" />
+          <AssetTextField label="Manufacturer" name="manufacturer" />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <AssetTextField label="FLOOR" name="floor" />
-          <AssetTextField label="ROOM" name="room" />
+          <AssetTextField label="Serial No." name="serialNumber" />
+          <AssetTextField label="Purchase Date" name="installDate" type="date" />
         </div>
-        <AssetTextField label="Asset Group" name="assetGroup" />
-        <AssetTextField label="ASSET NUMBER" name="tag" />
-        <AssetTextField label="Asset Description" name="assetDescription" />
-        <AssetTextField label="Additional description" name="additionalDescription" />
+        <AssetTextField label="QR Code" name="qrCode" />
         <AssetTextField label="Parent Asset" name="parentAsset" />
-        <AssetTextField label="Department" name="departmentCode" />
-        <ImageUploadField name="documentationUrl" />
-        <label className="grid gap-1 text-sm font-bold text-slate-600">
-          Remarks
-          <textarea name="remarks" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
-        </label>
+        <AssetTextField label="Assigned To" name="departmentCode" />
+        <AssetTextField label="Vendors" name="contractRef" />
+        <AssetTextField label="Asset Code" name="tag" />
+        <AssetTextField label="Parts" name="remarks" />
+        <AssetTextField label="URL 1" name="documentationUrl" />
+        <AssetTextField label="URL Label 1" name="urlLabel1" />
+        <AssetTextField label="URL 2" name="documentationUrl2" />
+        <AssetTextField label="URL Label 2" name="urlLabel2" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <AssetTextField label="Warranty Expiry Date" name="warrantyExpiry" type="date" />
+          <AssetTextField label="Life Expectancy (in months)" name="lifeExpectancyMonths" type="number" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <AssetTextField label="Purchase Cost" name="purchaseCost" type="number" />
+          <AssetTextField label="Replacement Cost" name="replacementCost" type="number" />
+          <AssetTextField label="Salvage Value" name="salvageValue" type="number" />
+        </div>
         <button disabled={saving} className="mt-2 flex h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
           <Plus size={18} />
           {saving ? "Saving..." : "Save Asset"}
@@ -1351,6 +1436,86 @@ function WorkOrders({
       )}
       {selectedWork && canExecute && !canAssignOrEdit && selectedWork.status !== "CLOSED" && selectedWork.status !== "PENDING_SUPERVISOR_REVIEW" && <WorkExecutionForm work={selectedWork} saving={saving} onSubmit={(formData) => updateWorkOrder(selectedWork.id, formData)} />}
     </section>
+  );
+}
+
+function AssetPreviewModal({ asset, onClose, onEdit, onCreateWorkOrder, children }: { asset: any; onClose: () => void; onEdit: () => void; onCreateWorkOrder: () => void; children?: React.ReactNode }) {
+  const image = attachmentList(asset.documentationUrl).find(isImageUrl);
+  const docs = attachmentList(asset.documentationUrl);
+  const historyData = (asset.history ?? []).slice(0, 8).map((event: any) => ({
+    name: new Date(event.createdAt).toLocaleDateString(),
+    events: 1,
+  }));
+
+  return (
+    <RequestModalShell title={`Asset | ${asset.assetDescription || asset.name}`} onClose={onClose}>
+      <div className="grid gap-5">
+        <div className="sticky top-0 z-10 -mx-5 -mt-5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-5 py-3 shadow-sm">
+          <div className="flex gap-5 text-sm font-black">
+            <span className="border-b-2 border-lagoon px-2 pb-3 text-ink">Details</span>
+            <span className="px-2 pb-3 text-slate-500">Status (Beta) <span className="rounded-full bg-lime-100 px-2 py-1 text-xs text-lime-700">Online</span></span>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={onCreateWorkOrder} className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white"><Plus size={16} className="inline" /> Work Order</button>
+            <button type="button" onClick={onEdit} className="rounded-lg border border-slate-200 px-4 py-3 text-sm font-black text-lagoon">Edit</button>
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-black text-slate-500"># {asset.tag}</p>
+          <h3 className="mt-1 text-2xl font-black">{asset.assetDescription || asset.name}</h3>
+          <p className="mt-2 max-w-3xl text-sm font-bold text-slate-600">{asset.additionalDescription || asset.remarks || "-"}</p>
+          <div className="mt-4 h-40 w-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            {image ? <img src={image} alt="Asset" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-sm font-black text-slate-400">No Image</div>}
+          </div>
+        </div>
+        <div className="border-t border-slate-200 pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="font-black">Details</h4>
+            <p className="text-xs font-bold text-slate-400">Last update on {formatDateCell(asset.updatedAt)}</p>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <PreviewField label="Location" value={[asset.buildingCode, asset.floor, asset.room].filter(Boolean).join(" > ")} />
+            <PreviewField label="Asset type" value={asset.assetGroup || asset.category} />
+            <PreviewField label="Model" value={asset.model} />
+            <PreviewField label="Manufacturer" value={asset.manufacturer} />
+            <PreviewField label="Serial No." value={asset.serialNumber} />
+            <PreviewField label="Purchase date" value={formatDateCell(asset.installDate)} />
+            <PreviewField label="URL" value={docs.join(" / ")} />
+            <PreviewField label="Parent" value={asset.parentAsset} />
+            <PreviewField label="QR Code" value={asset.qrCode} />
+            <PreviewField label="Warranty" value={formatDateCell(asset.warrantyExpiry)} />
+          </div>
+        </div>
+        <div className="border-t border-slate-200 pt-5">
+          <div className="flex items-center justify-between">
+            <h4 className="font-black">Asset Family</h4>
+            <button type="button" className="text-sm font-black text-lagoon">Expand All</button>
+          </div>
+          <div className="mt-3 flex items-center justify-between rounded-lg bg-emerald-100 px-4 py-3 text-sm font-black">
+            <span>{asset.assetDescription || asset.name}</span>
+            <span className="rounded-full bg-lime-100 px-2 py-1 text-xs text-lime-700">Online</span>
+          </div>
+          <button type="button" onClick={onEdit} className="mt-3 rounded-lg border border-slate-200 px-4 py-3 text-sm font-black text-lagoon">+ Sub Asset</button>
+        </div>
+        <div className="border-t border-slate-200 pt-5">
+          <h4 className="font-black">Work Order History</h4>
+          <div className="mt-3 h-52 rounded-lg bg-slate-50 p-3">
+            {historyData.length ? (
+              <ResponsiveContainer>
+                <BarChart data={historyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#d9e6ee" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="events" fill="#0f8b8d" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <div className="grid h-full place-items-center text-sm font-black text-slate-400">Not Enough Data</div>}
+          </div>
+        </div>
+        {children}
+      </div>
+    </RequestModalShell>
   );
 }
 
