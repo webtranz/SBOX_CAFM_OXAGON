@@ -591,6 +591,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               submitAsset={(formData) => postRecord("/api/assets", formData, "Asset")}
               updateAsset={updateAsset}
               submitWorkOrder={submitWorkOrder}
+              data={records}
               teams={records.teams}
               users={records.users}
               locations={records.locations}
@@ -790,6 +791,7 @@ function Assets({
   submitAsset,
   updateAsset,
   submitWorkOrder,
+  data,
   teams,
   users,
   locations,
@@ -804,6 +806,7 @@ function Assets({
   submitAsset: (formData: FormData) => void;
   updateAsset: (id: string, formData: FormData) => void;
   submitWorkOrder: (formData: FormData) => void;
+  data: ConsoleData;
   teams: any[];
   users: any[];
   locations: any[];
@@ -811,6 +814,7 @@ function Assets({
   saving: boolean;
 }) {
   const [previewAsset, setPreviewAsset] = useState<any | null>(null);
+  const [assetWorkOrderDraft, setAssetWorkOrderDraft] = useState<any | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterField, setFilterField] = useState("name");
@@ -944,20 +948,39 @@ function Assets({
           onClose={() => setPreviewAsset(null)}
           onEdit={() => setPreviewAsset({ ...previewAsset, editing: true })}
           onCreateWorkOrder={() => {
-            const formData = new FormData();
-            formData.set("title", `Work Order - ${previewAsset.assetDescription || previewAsset.name}`);
-            formData.set("type", "Corrective");
-            formData.set("assetTag", previewAsset.tag);
-            formData.set("assetType", previewAsset.assetGroup || previewAsset.category || "");
-            formData.set("departmentCode", previewAsset.departmentCode || "");
-            formData.set("priority", "MEDIUM");
-            formData.set("jobPlan", `Inspect and resolve issue for ${previewAsset.assetDescription || previewAsset.name}`);
-            formData.set("safetyNotes", "Follow site safety procedures.");
-            submitWorkOrder(formData);
+            setAssetWorkOrderDraft(previewAsset);
+            setPreviewAsset(null);
           }}
         >
           {canManageAssets && previewAsset.editing && <AssetEditForm asset={previewAsset} teams={teams} users={users} saving={saving} onSubmit={(formData) => updateAsset(previewAsset.id, formData)} />}
         </AssetPreviewModal>
+      )}
+      {assetWorkOrderDraft && (
+        <RequestModalShell title={`Create Work Order - ${assetWorkOrderDraft.assetDescription || assetWorkOrderDraft.name}`} onClose={() => setAssetWorkOrderDraft(null)}>
+          <WorkOrderForm
+            title="Asset Work Order"
+            data={data}
+            work={{
+              title: `Work Order - ${assetWorkOrderDraft.assetDescription || assetWorkOrderDraft.name}`,
+              type: "Corrective",
+              assetType: assetWorkOrderDraft.assetGroup || assetWorkOrderDraft.category || "",
+              asset: { tag: assetWorkOrderDraft.tag },
+              assetTag: assetWorkOrderDraft.tag,
+              departmentCode: assetWorkOrderDraft.departmentCode || "",
+              assignedTeamCode: assetWorkOrderDraft.assignedTeamCode || "",
+              priority: "MEDIUM",
+              jobPlan: `Inspect ${assetWorkOrderDraft.assetDescription || assetWorkOrderDraft.name} at ${[assetWorkOrderDraft.buildingCode, assetWorkOrderDraft.floor, assetWorkOrderDraft.room].filter(Boolean).join(" > ") || "selected location"}. Diagnose issue, record parts used, update asset history and attach proof.`,
+              safetyNotes: "Follow site safety procedures, verify access, PPE and isolation requirements.",
+              estimatedHours: 2,
+              cost: 0,
+            }}
+            onSubmit={async (formData) => {
+              await submitWorkOrder(formData);
+              setAssetWorkOrderDraft(null);
+            }}
+            saving={saving}
+          />
+        </RequestModalShell>
       )}
     </section>
   );
@@ -1558,6 +1581,7 @@ function WorkOrders({
       {previewWork && (
         <WorkOrderPreviewModal
           work={previewWork}
+          inventory={data.inventory}
           onClose={() => setPreviewWork(null)}
           onStatusChange={previewWork.status !== "CLOSED" ? (status) => runWorkAction(`${previewWork.id}:${status}`, previewWork, () => updateWorkStatus(previewWork.id, status)) : undefined}
           onPatch={(body) => quickPatchWork(previewWork, body)}
@@ -1976,7 +2000,10 @@ function Helpdesk({
             setEditing(previewRequest);
           }}
           onAssignTeam={(value) => setAssignment(previewRequest.id, { assignedTeamCode: value, assignedToEmail: "" })}
-          onReview={() => runRequestAction(`${previewRequest.id}:review`, previewRequest, () => updateRequest(previewRequest.id, requestFormData(previewRequest, "TRIAGED", "", { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode })))}
+          onReview={async () => {
+            await runRequestAction(`${previewRequest.id}:review`, previewRequest, () => updateRequest(previewRequest.id, requestFormData(previewRequest, "TRIAGED", "", { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode })));
+            setPreviewRequest((current: any) => current ? { ...current, status: "TRIAGED", reviewedAt: new Date().toISOString(), assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode } : current);
+          }}
           onCreateWorkOrder={async () => {
             await runRequestAction(`${previewRequest.id}:wo`, previewRequest, () => convertRequest(previewRequest.id, { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode }));
             setPreviewRequest(null);
@@ -2220,6 +2247,7 @@ function RequestPreviewModal({
 
 function WorkOrderPreviewModal({
   work,
+  inventory,
   onClose,
   onStatusChange,
   onPatch,
@@ -2228,6 +2256,7 @@ function WorkOrderPreviewModal({
   onReopenWork,
 }: {
   work: any;
+  inventory: any[];
   onClose: () => void;
   onStatusChange?: (status: string) => Promise<void> | void;
   onPatch?: (body: Record<string, string>) => Promise<void> | void;
@@ -2242,6 +2271,9 @@ function WorkOrderPreviewModal({
   const [zoom, setZoom] = useState(1);
   const [quickForm, setQuickForm] = useState<"" | "procedure" | "part" | "cost">("");
   const [quickValue, setQuickValue] = useState("");
+  const [quickPartSku, setQuickPartSku] = useState("");
+  const [quickPartQty, setQuickPartQty] = useState(1);
+  const [tab, setTab] = useState<"comments" | "history">("comments");
   const timelineRows: [string, unknown][] = [
     ["Created", work.createdAt],
     ["Assigned / Planned", work.plannedStart],
@@ -2263,9 +2295,17 @@ function WorkOrderPreviewModal({
     const value = quickValue.trim();
     if (!value) return;
     if (kind === "procedure") await onPatch?.({ jobPlan: [work.jobPlan, value].filter(Boolean).join("\n") });
-    if (kind === "part") await onPatch?.({ materialRequest: [work.materialRequest, value].filter(Boolean).join("\n") });
+    if (kind === "part") await onPatch?.({ inventoryUsed: [work.inventoryUsed, value].filter(Boolean).join("\n") });
     if (kind === "cost") await onPatch?.({ cost: value });
     setQuickValue("");
+    setQuickForm("");
+  }
+
+  async function saveSelectedPart() {
+    if (!quickPartSku) return;
+    await onPatch?.({ inventoryUsed: [work.inventoryUsed, `${quickPartSku}:${quickPartQty}`].filter(Boolean).join("\n") });
+    setQuickPartSku("");
+    setQuickPartQty(1);
     setQuickForm("");
   }
 
@@ -2416,12 +2456,19 @@ function WorkOrderPreviewModal({
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between"><h4 className="font-black">Parts</h4><button type="button" onClick={() => setQuickForm(quickForm === "part" ? "" : "part")} disabled={!onPatch} className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon disabled:opacity-50">Add Part</button></div>
               {quickForm === "part" && (
-                <div className="mt-3 flex gap-2">
-                  <input value={quickValue} onChange={(event) => setQuickValue(event.target.value)} placeholder="Part name / quantity" className="h-10 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-lagoon" />
-                  <button type="button" onClick={() => saveQuick("part")} className="rounded-lg bg-lagoon px-4 text-sm font-black text-white">Save</button>
+                <div className="mt-3 grid gap-2 md:grid-cols-[1fr_90px_auto]">
+                  <select value={quickPartSku} onChange={(event) => setQuickPartSku(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-lagoon">
+                    <option value="">Select part from stock</option>
+                    {inventory.map((item) => <option key={item.id ?? item.sku} value={item.sku}>{item.sku} - {item.name} ({item.onHand ?? 0} {item.unit ?? ""})</option>)}
+                  </select>
+                  <input value={quickPartQty} onChange={(event) => setQuickPartQty(Math.max(1, Number(event.target.value) || 1))} type="number" min={1} className="h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-lagoon" />
+                  <button type="button" onClick={saveSelectedPart} className="rounded-lg bg-lagoon px-4 text-sm font-black text-white">Save</button>
                 </div>
               )}
-              <p className="mt-2 text-sm font-bold text-slate-600">{work.materialRequest || work.inventoryUsed || "No parts added."}</p>
+              <div className="mt-2 grid gap-1 text-sm font-bold text-slate-600">
+                {String(work.inventoryUsed || "").split(/\r?\n|,/).map((part) => part.trim()).filter(Boolean).map((part) => <span key={part} className="rounded-lg bg-slate-50 px-3 py-2">{part}</span>)}
+                {!work.inventoryUsed && <span>No parts added.</span>}
+              </div>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between"><h4 className="font-black">Other Costs</h4><button type="button" onClick={() => setQuickForm(quickForm === "cost" ? "" : "cost")} disabled={!onPatch} className="rounded-lg border border-lagoon/30 px-3 py-2 text-xs font-black text-lagoon disabled:opacity-50">Add Cost</button></div>
@@ -2438,20 +2485,32 @@ function WorkOrderPreviewModal({
 
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="flex gap-6 border-b border-slate-200 text-sm font-black">
-            <span className="border-b-2 border-lagoon px-2 pb-3 text-lagoon">WO Comments</span>
-            <span className="px-2 pb-3 text-slate-500">History</span>
+            <button type="button" onClick={() => setTab("comments")} className={`px-2 pb-3 ${tab === "comments" ? "border-b-2 border-lagoon text-lagoon" : "text-slate-500"}`}>WO Comments</button>
+            <button type="button" onClick={() => setTab("history")} className={`px-2 pb-3 ${tab === "history" ? "border-b-2 border-lagoon text-lagoon" : "text-slate-500"}`}>History</button>
           </div>
           <div className="mt-4 grid gap-4">
-            {historyRows.map(([label, date, note]) => (
-              <div key={`${label}-${date}`} className="grid gap-1 rounded-lg bg-slate-50 p-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-black text-lagoon">{label}</p>
-                  <p className="text-xs font-bold text-slate-500">{formatDateCell(date as string)}</p>
+            {tab === "comments" ? (
+              <>
+                <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">{work.workNotes || "No additional comments yet."}</p>
+                <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">{work.supervisorRequest || work.materialRequest || "No material or supervisor requests."}</p>
+              </>
+            ) : (
+              <>
+                {historyRows.map(([label, date, note]) => (
+                  <div key={`${label}-${date}`} className="grid gap-1 rounded-lg bg-slate-50 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-black text-lagoon">{label}</p>
+                      <p className="text-xs font-bold text-slate-500">{formatDateCell(date as string)}</p>
+                    </div>
+                    <p className="font-bold text-slate-700">{note}</p>
+                  </div>
+                ))}
+                <div className="grid gap-2 rounded-lg bg-slate-50 p-3 text-sm">
+                  <p className="font-black text-lagoon">Parts history</p>
+                  <p className="font-bold text-slate-700">{work.inventoryUsed || "No parts used yet."}</p>
                 </div>
-                <p className="font-bold text-slate-700">{note}</p>
-              </div>
-            ))}
-            <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600">{work.workNotes || "No additional comments yet."}</p>
+              </>
+            )}
           </div>
         </div>
 
@@ -2694,6 +2753,8 @@ function ImageUploadField({ name, defaultValue = "" }: { name: string; defaultVa
 }
 
 function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string; work?: any; data: ConsoleData; onSubmit: (formData: FormData) => void; saving: boolean }) {
+  const initialAssetTag = work?.asset?.tag ?? work?.assetTag ?? "";
+  const [selectedAssetTag, setSelectedAssetTag] = useState(initialAssetTag);
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2702,6 +2763,9 @@ function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string;
   }
 
   const assetTypes = Array.from(new Set(data.assets.map((asset) => asset.assetGroup || asset.category).filter(Boolean)));
+  const selectedAsset = data.assets.find((asset) => asset.tag === selectedAssetTag);
+  const matchedService = selectedAsset ? data.services.find((service) => service.category === selectedAsset.category || service.category === selectedAsset.assetGroup || service.code === selectedAsset.serviceCode) : null;
+  const selectedLocation = selectedAsset ? [selectedAsset.siteCode || selectedAsset.site?.name, selectedAsset.buildingCode || selectedAsset.building?.name, selectedAsset.floor, selectedAsset.room].filter(Boolean).join(" > ") : "";
 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
@@ -2709,23 +2773,24 @@ function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string;
       <div className="mt-4 grid gap-3">
         <input name="title" defaultValue={work?.title ?? ""} placeholder="Title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         <input name="type" defaultValue={work?.type ?? ""} placeholder="Work type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <select name="assetType" defaultValue={work?.assetType ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <select key={`asset-type-${selectedAssetTag}`} name="assetType" defaultValue={work?.assetType ?? selectedAsset?.assetGroup ?? selectedAsset?.category ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select asset type</option>
           {assetTypes.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
-        <select name="assetTag" defaultValue={work?.asset?.tag ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <select name="assetTag" value={selectedAssetTag} onChange={(event) => setSelectedAssetTag(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select asset</option>
           {data.assets.map((asset) => <option key={asset.id} value={asset.tag}>{asset.tag} - {asset.assetDescription ?? asset.name}</option>)}
         </select>
-        <select name="departmentCode" defaultValue={work?.departmentCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        {selectedLocation && <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold text-slate-600">Asset location: {selectedLocation}</div>}
+        <select key={`dept-${selectedAssetTag}`} name="departmentCode" defaultValue={work?.departmentCode ?? selectedAsset?.departmentCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select department</option>
           {data.departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
         </select>
-        <select name="serviceCode" defaultValue={work?.serviceCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <select key={`service-${selectedAssetTag}`} name="serviceCode" defaultValue={work?.serviceCode ?? matchedService?.code ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select service</option>
           {data.services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
         </select>
-        <select name="assignedTeamCode" defaultValue={work?.assignedTeamCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <select key={`team-${selectedAssetTag}`} name="assignedTeamCode" defaultValue={work?.assignedTeamCode ?? selectedAsset?.assignedTeamCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Assign service team</option>
           {data.teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
         </select>
@@ -2737,7 +2802,7 @@ function WorkOrderForm({ title, work, data, onSubmit, saving }: { title: string;
           <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
         </select>
         {work && <select name="status" defaultValue={work.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon"><option>PENDING_ASSIGNMENT</option><option>ASSIGNED</option><option>ACCEPTED</option><option>REJECTED</option><option>IN_PROGRESS</option><option>ON_HOLD</option><option>COMPLETED</option><option>PENDING_SUPERVISOR_REVIEW</option><option>VERIFIED</option><option>REOPENED</option><option>CLOSED</option></select>}
-        <textarea name="jobPlan" defaultValue={work?.jobPlan ?? ""} placeholder="Job plan / work steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        <textarea key={`job-${selectedAssetTag}`} name="jobPlan" defaultValue={work?.jobPlan ?? (selectedAsset ? `Inspect ${selectedAsset.assetDescription || selectedAsset.name} at ${selectedLocation}. Review asset condition, diagnose issue, record parts used, update asset history and attach proof.` : "")} placeholder="Job plan / work steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <textarea name="safetyNotes" defaultValue={work?.safetyNotes ?? ""} placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
         <ImageUploadField name="photoUrls" defaultValue={work?.photoUrls ?? ""} />
         {work && (
