@@ -450,7 +450,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
     setSaving(false);
   }
 
-  async function convertRequestToWorkOrder(id: string, assignment: { assignedTeamCode?: string; assignedToEmail?: string } = {}) {
+  async function convertRequestToWorkOrder(id: string, assignment: { assignedTeamCode?: string; assignedToEmail?: string; assetTag?: string } = {}) {
     setSaving(true);
     const response = await fetch(`/api/service-requests/${id}/convert-work-order`, {
       method: "POST",
@@ -613,6 +613,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
           {canViewActive && active === "helpdesk" && (
             <Helpdesk
               requests={records.requests}
+              assets={records.assets}
               services={records.services}
               departments={records.departments}
               teams={records.teams}
@@ -1732,6 +1733,7 @@ function AssetPreviewModal({ asset, canManageAssets, onClose, onEdit, onCreateWo
 
 function Helpdesk({
   requests,
+  assets,
   services,
   departments,
   teams,
@@ -1745,6 +1747,7 @@ function Helpdesk({
   saving,
 }: {
   requests: any[];
+  assets: any[];
   services: any[];
   departments: any[];
   teams: any[];
@@ -1754,7 +1757,7 @@ function Helpdesk({
   role: string;
   updateRequest: (id: string, formData: FormData) => Promise<void> | void;
   deleteRequest: (id: string) => Promise<void> | void;
-  convertRequest: (id: string, assignment?: { assignedTeamCode?: string; assignedToEmail?: string }) => Promise<void> | void;
+  convertRequest: (id: string, assignment?: { assignedTeamCode?: string; assignedToEmail?: string; assetTag?: string }) => Promise<void> | void;
   saving: boolean;
 }) {
   const [editing, setEditing] = useState<any | null>(null);
@@ -1762,7 +1765,7 @@ function Helpdesk({
   const [previewRequest, setPreviewRequest] = useState<any | null>(null);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(requests[0]?.id ?? null);
   const [requestAction, setRequestAction] = useState<string | null>(null);
-  const [assignments, setAssignments] = useState<Record<string, { assignedTeamCode: string; assignedToEmail: string }>>({});
+  const [assignments, setAssignments] = useState<Record<string, { assignedTeamCode: string; assignedToEmail: string; assetTag: string }>>({});
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
@@ -1809,12 +1812,12 @@ function Helpdesk({
   }
 
   function assignmentFor(request: any) {
-    return assignments[request.id] ?? { assignedTeamCode: request.assignedTeamCode ?? "", assignedToEmail: "" };
+    return assignments[request.id] ?? { assignedTeamCode: request.assignedTeamCode ?? "", assignedToEmail: "", assetTag: request.assetTag ?? "" };
   }
 
-  function setAssignment(requestId: string, next: Partial<{ assignedTeamCode: string; assignedToEmail: string }>) {
+  function setAssignment(requestId: string, next: Partial<{ assignedTeamCode: string; assignedToEmail: string; assetTag: string }>) {
     setAssignments((current) => {
-      const previous = current[requestId] ?? { assignedTeamCode: "", assignedToEmail: "" };
+      const previous = current[requestId] ?? { assignedTeamCode: "", assignedToEmail: "", assetTag: "" };
       return { ...current, [requestId]: { ...previous, ...next } };
     });
   }
@@ -1989,6 +1992,7 @@ function Helpdesk({
       {previewRequest && (
         <RequestPreviewModal
           request={previewRequest}
+          assets={assets}
           teams={teams}
           assignment={assignmentFor(previewRequest)}
           canManage={isSupervisorView && permissions.manageRequests}
@@ -2000,12 +2004,13 @@ function Helpdesk({
             setEditing(previewRequest);
           }}
           onAssignTeam={(value) => setAssignment(previewRequest.id, { assignedTeamCode: value, assignedToEmail: "" })}
+          onAssignAsset={(value) => setAssignment(previewRequest.id, { assetTag: value })}
           onReview={async () => {
             await runRequestAction(`${previewRequest.id}:review`, previewRequest, () => updateRequest(previewRequest.id, requestFormData(previewRequest, "TRIAGED", "", { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode })));
             setPreviewRequest((current: any) => current ? { ...current, status: "TRIAGED", reviewedAt: new Date().toISOString(), assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode } : current);
           }}
           onCreateWorkOrder={async () => {
-            await runRequestAction(`${previewRequest.id}:wo`, previewRequest, () => convertRequest(previewRequest.id, { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode }));
+            await runRequestAction(`${previewRequest.id}:wo`, previewRequest, () => convertRequest(previewRequest.id, { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode, assetTag: assignmentFor(previewRequest).assetTag }));
             setPreviewRequest(null);
           }}
           onReject={() => runRequestAction(`${previewRequest.id}:reject`, previewRequest, () => updateRequest(previewRequest.id, requestFormData(previewRequest, "REJECTED", "Rejected by supervisor/helpdesk", { assignedTeamCode: assignmentFor(previewRequest).assignedTeamCode })))}
@@ -2134,6 +2139,7 @@ function RequestModalShell({ title, onClose, children }: { title: string; onClos
 
 function RequestPreviewModal({
   request,
+  assets,
   teams,
   assignment,
   canManage,
@@ -2142,19 +2148,22 @@ function RequestPreviewModal({
   onClose,
   onEdit,
   onAssignTeam,
+  onAssignAsset,
   onReview,
   onCreateWorkOrder,
   onReject,
 }: {
   request: any;
+  assets: any[];
   teams: any[];
-  assignment: { assignedTeamCode: string; assignedToEmail: string };
+  assignment: { assignedTeamCode: string; assignedToEmail: string; assetTag: string };
   canManage: boolean;
   canApprove: boolean;
   savingKey: string | null;
   onClose: () => void;
   onEdit: () => void;
   onAssignTeam: (value: string) => void;
+  onAssignAsset: (value: string) => void;
   onReview: () => Promise<void> | void;
   onCreateWorkOrder: () => Promise<void> | void;
   onReject: () => Promise<void> | void;
@@ -2163,6 +2172,15 @@ function RequestPreviewModal({
   const reviewedStatuses = ["TRIAGED", "APPROVED"];
   const isReviewed = reviewedStatuses.includes(request.status) || Boolean(request.workOrder);
   const canCreateWorkOrder = canManage && isReviewed && !request.workOrder;
+  const requestText = `${request.location || ""} ${request.departmentCode || ""} ${request.category || ""}`.toLowerCase();
+  const relatedAssets = assets.filter((asset) => {
+    const departmentMatch = !request.departmentCode || asset.departmentCode === request.departmentCode || asset.assignedTeamCode === request.assignedTeamCode || asset.assignedTeamCode === assignment.assignedTeamCode;
+    const locationText = `${asset.siteCode || asset.site?.name || ""} ${asset.buildingCode || asset.building?.name || ""} ${asset.floor || ""} ${asset.room || ""}`.toLowerCase();
+    const locationMatch = !request.location || requestText.includes(String(asset.room || "").toLowerCase()) || requestText.includes(String(asset.floor || "").toLowerCase()) || requestText.includes(String(asset.buildingCode || "").toLowerCase()) || locationText.split(/\s+/).some((token) => token.length > 2 && requestText.includes(token));
+    return departmentMatch || locationMatch;
+  });
+  const assetOptions = relatedAssets.length ? relatedAssets : assets;
+  const selectedAsset = assets.find((asset) => asset.tag === assignment.assetTag);
 
   return (
     <RequestModalShell title={`Request Preview: ${request.ticketNo}`} onClose={onClose}>
@@ -2210,27 +2228,59 @@ function RequestPreviewModal({
         </div>
 
         {canManage && (
-          <label className="grid gap-2 text-sm font-black text-slate-600">
-            Step 2: assign service team before creating work order
-            <select
-              value={assignment.assignedTeamCode}
-              onChange={(event) => onAssignTeam(event.target.value)}
-              disabled={!isReviewed}
-              className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-lagoon"
-            >
-              <option value="">Assign service team</option>
-              {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
-            </select>
-            {!isReviewed && <span className="text-xs font-bold text-amber-700">First change status to Reviewed, then select team and create work order.</span>}
-          </label>
+          <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3">
+            <label className="grid gap-2 text-sm font-black text-slate-600">
+              Step 2: select related asset for this request
+              <select
+                value={assignment.assetTag}
+                onChange={(event) => {
+                  const tag = event.target.value;
+                  const asset = assets.find((item) => item.tag === tag);
+                  onAssignAsset(tag);
+                  if (asset?.assignedTeamCode && !assignment.assignedTeamCode) onAssignTeam(asset.assignedTeamCode);
+                }}
+                disabled={!isReviewed}
+                className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-lagoon"
+              >
+                <option value="">Select asset by department / location</option>
+                {assetOptions.map((asset) => (
+                  <option key={asset.id} value={asset.tag}>
+                    {asset.tag} - {asset.assetDescription || asset.name} / {[asset.buildingCode || asset.building?.name, asset.floor, asset.room].filter(Boolean).join(" > ") || "No location"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedAsset && (
+              <div className="grid gap-2 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-600 md:grid-cols-2">
+                <span>Asset type: {selectedAsset.assetGroup || selectedAsset.category || "-"}</span>
+                <span>Department: {selectedAsset.departmentCode || "-"}</span>
+                <span>Assigned team: {selectedAsset.assignedTeamCode || "-"}</span>
+                <span>Location: {[selectedAsset.buildingCode || selectedAsset.building?.name, selectedAsset.floor, selectedAsset.room].filter(Boolean).join(" > ") || "-"}</span>
+              </div>
+            )}
+            <label className="grid gap-2 text-sm font-black text-slate-600">
+              Step 3: assign service team before creating work order
+              <select
+                value={assignment.assignedTeamCode}
+                onChange={(event) => onAssignTeam(event.target.value)}
+                disabled={!isReviewed}
+                className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-lagoon"
+              >
+                <option value="">Assign service team</option>
+                {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
+              </select>
+              {!isReviewed && <span className="text-xs font-bold text-amber-700">First change status to Reviewed, then select asset/team and create work order.</span>}
+            </label>
+          </div>
         )}
 
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <p className="text-xs font-black uppercase text-slate-500">Workflow</p>
-          <div className="mt-2 grid gap-2 md:grid-cols-3">
+          <div className="mt-2 grid gap-2 md:grid-cols-4">
             <div className={`rounded-lg p-3 text-sm font-black ${isReviewed ? "bg-emerald-50 text-emerald-700" : "bg-white text-slate-700"}`}>1. Change status to Reviewed</div>
-            <div className={`rounded-lg p-3 text-sm font-black ${isReviewed ? "bg-white text-slate-700" : "bg-slate-100 text-slate-400"}`}>2. Assign service team</div>
-            <div className={`rounded-lg p-3 text-sm font-black ${canCreateWorkOrder ? "bg-white text-slate-700" : "bg-slate-100 text-slate-400"}`}>3. Create Work Order</div>
+            <div className={`rounded-lg p-3 text-sm font-black ${isReviewed ? "bg-white text-slate-700" : "bg-slate-100 text-slate-400"}`}>2. Select asset / location</div>
+            <div className={`rounded-lg p-3 text-sm font-black ${isReviewed ? "bg-white text-slate-700" : "bg-slate-100 text-slate-400"}`}>3. Assign service team</div>
+            <div className={`rounded-lg p-3 text-sm font-black ${canCreateWorkOrder ? "bg-white text-slate-700" : "bg-slate-100 text-slate-400"}`}>4. Create Work Order</div>
           </div>
         </div>
 

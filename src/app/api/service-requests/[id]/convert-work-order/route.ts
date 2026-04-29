@@ -23,7 +23,8 @@ export async function POST(requestBody: Request, { params }: { params: Promise<{
       return NextResponse.json(existingWorkOrder);
     }
 
-    const assignedTeamCode = body.assignedTeamCode || request.assignedTeamCode || null;
+    const selectedAsset = body.assetTag ? await prisma.asset.findUnique({ where: { tag: String(body.assetTag) } }) : null;
+    const assignedTeamCode = body.assignedTeamCode || request.assignedTeamCode || selectedAsset?.assignedTeamCode || null;
     const [count] = await Promise.all([
       prisma.workOrder.count(),
     ]);
@@ -33,21 +34,39 @@ export async function POST(requestBody: Request, { params }: { params: Promise<{
         woNo: `WO-${String(count + 81001).padStart(5, "0")}`,
         title: request.title,
         type: "Reactive",
-        departmentCode: request.departmentCode,
+        assetType: selectedAsset?.assetGroup || selectedAsset?.category || request.category,
+        departmentCode: request.departmentCode || selectedAsset?.departmentCode,
         serviceCode: request.serviceCode,
         assignedTeamCode,
         priority: request.priority,
         status: assignedTeamCode ? "ASSIGNED" : "PENDING_ASSIGNMENT",
+        assetId: selectedAsset?.id,
         requestId: request.id,
         assignedToId: null,
         plannedStart: new Date(),
         dueAt: addHours(new Date(), dueHours[request.priority]),
         estimatedHours: request.priority === "CRITICAL" ? 2 : 4,
         cost: 0,
-        jobPlan: request.description,
+        jobPlan: [
+          request.description,
+          selectedAsset ? `Asset: ${selectedAsset.tag} - ${selectedAsset.assetDescription || selectedAsset.name}` : "",
+          selectedAsset ? `Location: ${[selectedAsset.buildingCode, selectedAsset.floor, selectedAsset.room].filter(Boolean).join(" > ")}` : `Location: ${request.location}`,
+        ].filter(Boolean).join("\n"),
         safetyNotes: "Supervisor to verify access, PPE, isolation and permits before dispatch.",
       },
     });
+
+    if (selectedAsset) {
+      await prisma.assetHistory.create({
+        data: {
+          assetId: selectedAsset.id,
+          eventType: "SERVICE_REQUEST_CONVERTED",
+          title: `${workOrder.woNo} created from ${request.ticketNo}`,
+          details: `${request.title} assigned to ${assignedTeamCode || "unassigned team"} from supervisor review.`,
+          actor: user?.name || user?.email || "Supervisor",
+        },
+      });
+    }
 
     await prisma.serviceRequest.update({
       where: { id },
