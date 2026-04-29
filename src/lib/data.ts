@@ -33,7 +33,7 @@ export async function getOperatingData(user: OperatingUser = null) {
     const departmentsForUser = departmentValues(user);
     const teamCode = user?.team?.code;
     const visibleAssetWhere =
-      kind === "admin"
+      kind === "admin" || kind === "readonly"
         ? {}
         : kind === "supervisor"
         ? { departmentCode: { in: departmentsForUser } }
@@ -41,7 +41,7 @@ export async function getOperatingData(user: OperatingUser = null) {
         ? { OR: [{ assignedTeamCode: teamCode || "" }, { departmentCode: { in: departmentsForUser } }] }
         : {};
     const visibleRequestWhere =
-      kind === "admin"
+      kind === "admin" || kind === "readonly"
         ? {}
         : kind === "supervisor"
         ? { OR: [{ departmentCode: { in: departmentsForUser } }, { assignedSupervisorEmail: user?.email || "" }] }
@@ -49,14 +49,14 @@ export async function getOperatingData(user: OperatingUser = null) {
         ? { OR: [{ assignedTeamCode: teamCode || "" }, { assignedSupervisorEmail: user?.email || "" }] }
         : { requester: user?.name || user?.email || "" };
     const visibleWorkWhere =
-      kind === "admin"
+      kind === "admin" || kind === "readonly"
         ? {}
         : kind === "supervisor"
         ? { departmentCode: { in: departmentsForUser } }
         : kind === "technician"
         ? { OR: [{ assignedToId: user?.id || "" }, { assignedTeamCode: teamCode || "" }] }
         : { assignedToId: "__none__" };
-    const visibleJobPlanWhere = kind === "admin" ? {} : kind === "supervisor" || kind === "technician" ? { departmentCode: { in: departmentsForUser } } : {};
+    const visibleJobPlanWhere = kind === "admin" || kind === "readonly" ? {} : kind === "supervisor" || kind === "technician" ? { departmentCode: { in: departmentsForUser } } : {};
     const visibleUsersWhere = kind === "admin" ? {} : { OR: [{ department: { in: departmentsForUser } }, { id: user?.id || "" }] };
 
     const [sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, roles, auditLogs] = await Promise.all([

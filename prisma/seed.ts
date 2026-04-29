@@ -4,6 +4,33 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+async function resetOperationalData() {
+  await prisma.inventoryIssue.deleteMany({});
+  await prisma.meter.deleteMany({});
+  await prisma.iotAlert.deleteMany({});
+  await prisma.hseIncident.deleteMany({});
+  await prisma.inspection.deleteMany({});
+  await prisma.preventiveMaintenance.deleteMany({});
+  await prisma.workOrder.deleteMany({});
+  await prisma.serviceRequest.deleteMany({});
+  await prisma.assetHistory.deleteMany({});
+  await prisma.asset.deleteMany({});
+  await prisma.space.deleteMany({});
+  await prisma.building.deleteMany({});
+  await prisma.site.deleteMany({});
+  await prisma.location.deleteMany({});
+  await prisma.jobPlan.deleteMany({});
+  await prisma.inventoryItem.deleteMany({});
+  await prisma.contract.deleteMany({});
+  await prisma.vendor.deleteMany({});
+  await prisma.serviceCatalog.deleteMany({});
+  await prisma.assetCategory.deleteMany({});
+  await prisma.employee.deleteMany({});
+  await prisma.department.deleteMany({});
+  await prisma.auditLog.deleteMany({});
+  await prisma.team.deleteMany({ where: { users: { none: {} } } });
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash("cafm12345", 10);
   const adminPasswordHash = await bcrypt.hash("Admin@12345", 10);
@@ -31,6 +58,7 @@ async function main() {
     ["Reception", "Front-desk resident and visitor service request intake"],
     ["Resident", "Resident portal request submission and request tracking"],
     ["Requester", "Create and track service requests"],
+    ["Read-only", "View-only access to assets, work orders, history and reports"],
   ] as const;
 
   for (const [name, description] of standardRoles) {
@@ -54,6 +82,8 @@ async function main() {
     ["users.manage", "Manage Users", "Administration", "Create users and assign roles"],
     ["roles.manage", "Manage Roles", "Administration", "Create custom roles and permission sets"],
     ["reports.view", "View Reports", "Reports", "Preview and download reports"],
+    ["assets.view", "View Assets", "Assets", "View asset register, history and location drill-down"],
+    ["work.view", "View Work Orders", "Work", "View work order panels and completion history"],
     ["reception.manage", "Reception Desk", "Reception", "Create resident requests and view front-desk queue"],
     ["resident.portal", "Resident Portal", "Resident", "Create and track own requests"],
   ] as const;
@@ -80,6 +110,7 @@ async function main() {
     Reception: ["reception.manage", "requests.manage", "requests.view"],
     Resident: ["resident.portal", "requests.view"],
     Requester: ["resident.portal", "requests.view"],
+    "Read-only": ["assets.view", "work.view", "requests.view", "reports.view"],
   };
 
   for (const [role, codes] of Object.entries(defaultRolePermissions)) {
@@ -109,6 +140,8 @@ async function main() {
   );
   users.unshift(admin);
 
+  await resetOperationalData();
+
   const mepTeam = await prisma.team.upsert({
     where: { code: "MEP" },
     update: {},
@@ -123,17 +156,64 @@ async function main() {
       coverage: "All towers and plant rooms",
     },
   });
-
-  await prisma.department.upsert({
-    where: { code: "MEP" },
+  const electricalTeam = await prisma.team.upsert({
+    where: { code: "ELEC" },
     update: {},
     create: {
-      code: "MEP",
-      name: "MEP Department",
-      siteLocation: "Tower A",
-      description: "Mechanical, electrical and plumbing services.",
+      code: "ELEC",
+      name: "Electrical Response Team",
+      type: "Hard Services",
+      supervisor: "Mariam Al-Fahad",
+      phone: "+966 500000002",
+      email: "electrical@tamimiglobal.local",
+      shift: "Day + On-call",
+      coverage: "Electrical rooms, DBs, generators and UPS",
     },
   });
+  const civilTeam = await prisma.team.upsert({
+    where: { code: "CIVIL" },
+    update: {},
+    create: {
+      code: "CIVIL",
+      name: "Civil & Fitout Team",
+      type: "Soft / Civil Services",
+      supervisor: "Omar Siddiqui",
+      phone: "+966 500000003",
+      email: "civil@tamimiglobal.local",
+      shift: "Day shift",
+      coverage: "Finishes, doors, ceilings, rooms and occupancy support",
+    },
+  });
+  const housekeepingTeam = await prisma.team.upsert({
+    where: { code: "HK" },
+    update: {},
+    create: {
+      code: "HK",
+      name: "Housekeeping Team",
+      type: "Soft Services",
+      supervisor: "Omar Siddiqui",
+      phone: "+966 500000004",
+      email: "housekeeping@tamimiglobal.local",
+      shift: "Two shifts",
+      coverage: "Public areas, offices, washrooms and pantry spaces",
+    },
+  });
+
+  await Promise.all(
+    [
+      ["MEP", "MEP Department", "Tower A", "Mechanical, electrical and plumbing services."],
+      ["ELEC", "Electrical Department", "Tower A", "Power distribution, lighting, UPS, generators and panels."],
+      ["CIVIL", "Civil Department", "Tower A", "Fitout, finishes, rooms, doors and small civil repairs."],
+      ["HK", "Housekeeping Department", "Tower A", "Cleaning, waste, pantry and public area upkeep."],
+      ["SEC", "Security Department", "Tower A", "Access control, visitor support and security equipment coordination."],
+    ].map(([code, name, siteLocation, description]) =>
+      prisma.department.upsert({
+        where: { code },
+        update: { name, siteLocation, description },
+        create: { code, name, siteLocation, description },
+      }),
+    ),
+  );
 
   await prisma.employee.upsert({
     where: { companyId: "EMP-001" },
@@ -160,6 +240,28 @@ async function main() {
       description: "Cooling, heating and ventilation equipment.",
     },
   });
+  await Promise.all(
+    [
+      ["ELEC", "Electrical Equipment", "Electrical", 20, false, "Panels, DBs, UPS, lighting and generators."],
+      ["PLUMB", "Plumbing Equipment", "Plumbing", 15, false, "Pumps, tanks, valves and domestic water assets."],
+      ["FLS", "Fire & Life Safety", "Life Safety", 12, true, "Fire pumps, panels, extinguishers and emergency systems."],
+      ["FURN", "Furniture & Fixtures", "Civil", 10, false, "Furniture, fixtures, room equipment and occupancy assets."],
+      ["IT", "IT Infrastructure", "IT", 7, false, "Network racks, access points, CCTV and IT devices."],
+    ].map(([code, name, type, defaultLifeYrs, statutory, description]) =>
+      prisma.assetCategory.upsert({
+        where: { code: String(code) },
+        update: {},
+        create: {
+          code: String(code),
+          name: String(name),
+          type: String(type),
+          defaultLifeYrs: Number(defaultLifeYrs),
+          statutory: Boolean(statutory),
+          description: String(description),
+        },
+      }),
+    ),
+  );
 
   await prisma.serviceCatalog.upsert({
     where: { code: "HVAC-REQ" },
@@ -175,6 +277,30 @@ async function main() {
       description: "Temperature, ventilation and indoor air quality requests.",
     },
   });
+  await Promise.all(
+    [
+      ["ELEC-REQ", "Electrical Fault", "Electrical", "Reactive", "HIGH", 8, electricalTeam.id, "Lighting, power socket, panel and breaker faults."],
+      ["PLUMB-REQ", "Plumbing Leak", "Plumbing", "Reactive", "CRITICAL", 4, mepTeam.id, "Leaks, blockages, valves, pumps and water system faults."],
+      ["CIVIL-REQ", "Civil Repair", "Civil", "Reactive", "MEDIUM", 24, civilTeam.id, "Doors, ceilings, gypsum, paint, flooring and furniture defects."],
+      ["HK-REQ", "Housekeeping Request", "Housekeeping", "Service", "LOW", 12, housekeepingTeam.id, "Cleaning, waste removal, spills and pantry service."],
+      ["SEC-REQ", "Access Control", "Security", "Reactive", "MEDIUM", 12, electricalTeam.id, "Access reader, door maglock and security system coordination."],
+    ].map(([code, name, category, type, priority, slaHours, teamId, description]) =>
+      prisma.serviceCatalog.upsert({
+        where: { code: String(code) },
+        update: {},
+        create: {
+          code: String(code),
+          name: String(name),
+          category: String(category),
+          type: String(type),
+          priority: priority as any,
+          slaHours: Number(slaHours),
+          teamId: String(teamId),
+          description: String(description),
+        },
+      }),
+    ),
+  );
 
   const site = await prisma.site.upsert({
     where: { id: "site-riyadh-kafd" },
@@ -219,15 +345,17 @@ async function main() {
   );
 
   const assetRows = [
-    ["AHU-RYD-01-004", "Air Handling Unit 4", "HVAC", "Cooling", "HIGH", "ACTIVE", 88, 145000],
-    ["GEN-RYD-02-001", "Emergency Generator 1", "Power", "Electrical", "CRITICAL", "STANDBY", 91, 420000],
-    ["FLS-RYD-01-221", "Fire Pump Controller", "Life Safety", "Fire", "CRITICAL", "ACTIVE", 76, 88000],
-    ["CHL-RYD-01-002", "Centrifugal Chiller 2", "HVAC", "Cooling", "CRITICAL", "ACTIVE", 72, 980000],
-    ["LFT-RYD-A-008", "Passenger Lift 8", "Vertical Transport", "Elevators", "HIGH", "ACTIVE", 83, 360000],
+    ["AHU-RYD-01-004", "Air Handling Unit 4", "HVAC", "Cooling", "HIGH", "ACTIVE", 88, 145000, "MEP", "mariam@brightworks.local", "18", "Plant Room"],
+    ["GEN-RYD-02-001", "Emergency Generator 1", "ELEC", "Electrical", "CRITICAL", "STANDBY", 91, 420000, "ELEC", "mariam@brightworks.local", "B2", "Generator Room"],
+    ["FLS-RYD-01-221", "Fire Pump Controller", "FLS", "Fire", "CRITICAL", "ACTIVE", 76, 88000, "MEP", "sara@brightworks.local", "B2", "Fire Pump Room"],
+    ["CHL-RYD-01-002", "Centrifugal Chiller 2", "HVAC", "Cooling", "CRITICAL", "ACTIVE", 72, 980000, "MEP", "mariam@brightworks.local", "B2", "Chiller Plant"],
+    ["LFT-RYD-A-008", "Passenger Lift 8", "ELEC", "Elevators", "HIGH", "ACTIVE", 83, 360000, "ELEC", "mariam@brightworks.local", "G", "Lift Lobby"],
+    ["FUR-RYD-18-044", "Executive Desk 44", "FURN", "Furniture", "LOW", "ACTIVE", 95, 9500, "CIVIL", "omar@brightworks.local", "18", "Executive Offices"],
+    ["IT-RYD-18-AP12", "Wireless Access Point 12", "IT", "Network", "MEDIUM", "ACTIVE", 89, 2800, "ELEC", "mariam@brightworks.local", "18", "Executive Offices"],
   ] as const;
 
   const assets = await Promise.all(
-    assetRows.map(([tag, name, category, system, criticality, status, conditionScore, purchaseCost]) =>
+    assetRows.map(([tag, name, category, system, criticality, status, conditionScore, purchaseCost, assignedTeamCode, assignedSupervisorEmail, floor, room]) =>
       prisma.asset.upsert({
         where: { tag },
         update: {},
@@ -246,7 +374,9 @@ async function main() {
           assetDescription: name,
           additionalDescription: system,
           parentAsset: "TOP LEVEL",
-          departmentCode: "1111",
+          departmentCode: assignedTeamCode,
+          assignedTeamCode,
+          assignedSupervisorEmail,
           remarks: "Seeded from CAFM baseline.",
           conditionScore,
           manufacturer: "Enterprise OEM",
@@ -259,8 +389,8 @@ async function main() {
           purchaseCost,
           salvageValue: Math.round(purchaseCost * 0.1),
           depreciationRate: 12.5,
-          floor: tag.includes("GEN") ? "B2" : "18",
-          room: tag.includes("GEN") ? "Generator Room" : "Plant Room",
+          floor,
+          room,
           qrCode: `CAFM-ASSET:${tag}`,
           siteId: site.id,
           buildingId: towerA.id,
@@ -288,10 +418,12 @@ async function main() {
 
   await Promise.all(
     ([
-      ["SR-24001", "Lobby temperature above comfort range", "HVAC", "Tenant Services", "HIGH", "ASSIGNED", "Tower A Lobby", 12],
-      ["SR-24002", "Water leak near pantry", "Plumbing", "Floor Warden", "CRITICAL", "IN_PROGRESS", "Tower A L18", 4],
-      ["SR-24003", "Access card reader intermittent", "Security", "Reception", "MEDIUM", "NEW", "Tower A Gate 2", 48],
-    ] as const).map(([ticketNo, title, category, requester, priority, status, location, slaHours]) =>
+      ["SR-24001", "Lobby temperature above comfort range", "HVAC", "MEP", "HVAC-REQ", "MEP", "mariam@brightworks.local", "Tenant Services", "HIGH", "ASSIGNED", "Tower A > G > Main Lobby", 12],
+      ["SR-24002", "Water leak near pantry", "Plumbing", "MEP", "PLUMB-REQ", "MEP", "mariam@brightworks.local", "Floor Warden", "CRITICAL", "IN_PROGRESS", "Tower A > 18 > Pantry", 4],
+      ["SR-24003", "Access card reader intermittent", "Security", "SEC", "SEC-REQ", "ELEC", "mariam@brightworks.local", "Reception", "MEDIUM", "NEW", "Tower A > G > Main Lobby", 48],
+      ["SR-24004", "Ceiling tile damaged in office", "Civil", "CIVIL", "CIVIL-REQ", "CIVIL", "omar@brightworks.local", "Admin Office", "LOW", "APPROVED", "Tower A > 18 > Executive Offices", 36],
+      ["SR-24005", "Washroom cleaning required", "Housekeeping", "HK", "HK-REQ", "HK", "omar@brightworks.local", "Resident", "MEDIUM", "NEW", "Tower A > 18 > Pantry", 8],
+    ] as const).map(([ticketNo, title, category, departmentCode, serviceCode, assignedTeamCode, assignedSupervisorEmail, requester, priority, status, location, slaHours]) =>
       prisma.serviceRequest.upsert({
         where: { ticketNo },
         update: {},
@@ -299,6 +431,10 @@ async function main() {
           ticketNo,
           title,
           category,
+          departmentCode,
+          serviceCode,
+          assignedTeamCode,
+          assignedSupervisorEmail,
           requester,
           channel: "Portal",
           priority,
@@ -314,9 +450,11 @@ async function main() {
 
   await Promise.all(
     [
-      { woNo: "WO-81024", title: "Replace AHU filters and rebalance", type: "PPM", priority: "HIGH" as const, status: "IN_PROGRESS" as const, assetId: assets[0].id, assignedToId: users[2].id, cost: 2200 },
-      { woNo: "WO-81025", title: "Fire pump weekly test", type: "Inspection", priority: "CRITICAL" as const, status: "ASSIGNED" as const, assetId: assets[2].id, assignedToId: users[3].id, cost: 780 },
-      { woNo: "WO-81026", title: "Chiller vibration investigation", type: "Condition Based", priority: "HIGH" as const, status: "TRIAGED" as const, assetId: assets[3].id, assignedToId: users[2].id, cost: 0 },
+      { woNo: "WO-81024", title: "Replace AHU filters and rebalance", type: "PPM", priority: "HIGH" as const, status: "IN_PROGRESS" as const, assetId: assets[0].id, departmentCode: "MEP", serviceCode: "HVAC-REQ", assignedTeamCode: "MEP", jobPlanCode: "JP-HVAC-FILTER", assignedToId: users[2].id, cost: 2200, inventoryUsed: "FLT-24X24-MERV13:2", workNotes: "Technician responded and AHU isolation is complete." },
+      { woNo: "WO-81025", title: "Fire pump weekly test", type: "Inspection", priority: "CRITICAL" as const, status: "ASSIGNED" as const, assetId: assets[2].id, departmentCode: "MEP", serviceCode: "PLUMB-REQ", assignedTeamCode: "MEP", jobPlanCode: "JP-FLS-PUMP", assignedToId: users[3].id, cost: 780, inventoryUsed: "", workNotes: "" },
+      { woNo: "WO-81026", title: "Chiller vibration investigation", type: "Condition Based", priority: "HIGH" as const, status: "TRIAGED" as const, assetId: assets[3].id, departmentCode: "MEP", serviceCode: "HVAC-REQ", assignedTeamCode: "MEP", jobPlanCode: "JP-CHILLER-CB", assignedToId: users[2].id, cost: 0, inventoryUsed: "", workNotes: "" },
+      { woNo: "WO-81027", title: "Replace failed LED panel", type: "Corrective", priority: "MEDIUM" as const, status: "PENDING_SUPERVISOR_REVIEW" as const, assetId: assets[6].id, departmentCode: "ELEC", serviceCode: "ELEC-REQ", assignedTeamCode: "ELEC", jobPlanCode: "JP-ELEC-LIGHT", assignedToId: users[2].id, cost: 320, inventoryUsed: "LED-PNL-60W:1", workNotes: "Panel replaced and tested. Awaiting supervisor closure." },
+      { woNo: "WO-81028", title: "Repair executive office desk drawer", type: "Corrective", priority: "LOW" as const, status: "CLOSED" as const, assetId: assets[5].id, departmentCode: "CIVIL", serviceCode: "CIVIL-REQ", assignedTeamCode: "CIVIL", jobPlanCode: "JP-CIVIL-FIX", assignedToId: users[1].id, cost: 140, inventoryUsed: "", workNotes: "Drawer rails adjusted and work verified." },
     ].map((row) =>
       prisma.workOrder.upsert({
         where: { woNo: row.woNo },
@@ -328,12 +466,21 @@ async function main() {
           priority: row.priority,
           status: row.status,
           assetId: row.assetId,
+          departmentCode: row.departmentCode,
+          serviceCode: row.serviceCode,
+          assignedTeamCode: row.assignedTeamCode,
+          jobPlanCode: row.jobPlanCode,
           assignedToId: row.assignedToId,
           plannedStart: new Date(),
           dueAt: addDays(new Date(), 2),
           estimatedHours: 4,
           actualHours: row.status === "IN_PROGRESS" ? 1.5 : null,
           cost: row.cost,
+          responseAt: ["IN_PROGRESS", "PENDING_SUPERVISOR_REVIEW", "CLOSED"].includes(row.status) ? subDays(new Date(), 1) : null,
+          resolutionAt: ["PENDING_SUPERVISOR_REVIEW", "CLOSED"].includes(row.status) ? new Date() : null,
+          finishedAt: row.status === "CLOSED" ? new Date() : null,
+          inventoryUsed: row.inventoryUsed,
+          workNotes: row.workNotes,
           jobPlan: "Inspect, isolate if required, execute checklist, capture readings, update failure codes and attach photos.",
           safetyNotes: "Verify PTW, PPE, access clearance and isolation requirements.",
         },
@@ -355,36 +502,59 @@ async function main() {
     ),
   );
 
-  await prisma.location.upsert({
-    where: { code: "KAFD-A-18-PLANT" },
-    update: {},
-    create: {
-      code: "KAFD-A-18-PLANT",
-      site: "King Abdullah Financial District",
-      zone: "CB",
-      building: "Tower A",
-      floor: "18",
-      room: "Plant Room",
-      type: "Plant",
-      description: "Primary MEP plant room for Tower A level 18.",
-    },
-  });
+  await Promise.all(
+    [
+      ["KAFD-A-G-LOBBY", "King Abdullah Financial District", "CB", "Tower A", "G", "Main Lobby", "Public", "Main reception and visitor lobby."],
+      ["KAFD-A-18-PLANT", "King Abdullah Financial District", "CB", "Tower A", "18", "Plant Room", "Plant", "Primary MEP plant room for Tower A level 18."],
+      ["KAFD-A-18-OFFICE", "King Abdullah Financial District", "CB", "Tower A", "18", "Executive Offices", "Office", "Executive office suite and meeting rooms."],
+      ["KAFD-A-B2-GEN", "King Abdullah Financial District", "CB", "Tower A", "B2", "Generator Room", "Plant", "Emergency generator room."],
+      ["KAFD-A-B2-FIRE", "King Abdullah Financial District", "CB", "Tower A", "B2", "Fire Pump Room", "Life Safety", "Fire pump and controller room."],
+      ["KAFD-A-B2-CHILLER", "King Abdullah Financial District", "CB", "Tower A", "B2", "Chiller Plant", "Plant", "Chiller and chilled water plant space."],
+      ["KAFD-A-G-LIFT", "King Abdullah Financial District", "CB", "Tower A", "G", "Lift Lobby", "Vertical Transport", "Passenger lift lobby."],
+      ["KAFD-A-18-PANTRY", "King Abdullah Financial District", "CB", "Tower A", "18", "Pantry", "Support", "Floor pantry and small wet area."],
+    ].map(([code, siteName, zone, building, floor, room, type, description]) =>
+      prisma.location.upsert({
+        where: { code: String(code) },
+        update: {},
+        create: {
+          code: String(code),
+          site: String(siteName),
+          zone: String(zone),
+          building: String(building),
+          floor: String(floor),
+          room: String(room),
+          type: String(type),
+          description: String(description),
+        },
+      }),
+    ),
+  );
 
-  await prisma.jobPlan.upsert({
-    where: { code: "JP-HVAC-FILTER" },
-    update: {},
-    create: {
-      code: "JP-HVAC-FILTER",
-      name: "AHU Filter Replacement",
-      assetType: "HVAC",
-      departmentCode: "MEP",
-      serviceCode: "HVAC-REQ",
-      estimatedHours: 2,
-      priority: "MEDIUM",
-      steps: "Inspect filter bank, isolate AHU if required, replace filters, clean frame, verify differential pressure and update asset history.",
-      safetyNotes: "Use PPE, check access permit and verify safe access before removing filters.",
-    },
-  });
+  await Promise.all(
+    [
+      ["JP-HVAC-FILTER", "AHU Filter Replacement", "HVAC", "MEP", "HVAC-REQ", 2, "MEDIUM", "Inspect filter bank, isolate AHU if required, replace filters, clean frame, verify differential pressure and update asset history.", "Use PPE, check access permit and verify safe access before removing filters."],
+      ["JP-FLS-PUMP", "Fire Pump Weekly Test", "FLS", "MEP", "PLUMB-REQ", 1.5, "CRITICAL", "Check controller, run pump, record suction/discharge pressure, verify jockey pump and alarms.", "Notify control room before test and follow fire system bypass process."],
+      ["JP-CHILLER-CB", "Chiller Condition Investigation", "HVAC", "MEP", "HVAC-REQ", 4, "HIGH", "Review BMS trend, inspect vibration, check oil and temperatures, record corrective recommendation.", "Use hearing protection and follow rotating equipment precautions."],
+      ["JP-ELEC-LIGHT", "Lighting Panel Replacement", "ELEC", "ELEC", "ELEC-REQ", 1, "MEDIUM", "Isolate circuit, replace panel/light fitting, test lux level and restore circuit.", "Lockout/tagout the circuit and verify dead before touching wiring."],
+      ["JP-CIVIL-FIX", "Civil Minor Repair", "FURN", "CIVIL", "CIVIL-REQ", 2, "LOW", "Inspect defect, repair/replace fixture, clean area and confirm user acceptance.", "Use hand tools safely and protect surrounding finishes."],
+    ].map(([code, name, assetType, departmentCode, serviceCode, estimatedHours, priority, steps, safetyNotes]) =>
+      prisma.jobPlan.upsert({
+        where: { code: String(code) },
+        update: {},
+        create: {
+          code: String(code),
+          name: String(name),
+          assetType: String(assetType),
+          departmentCode: String(departmentCode),
+          serviceCode: String(serviceCode),
+          estimatedHours: Number(estimatedHours),
+          priority: priority as any,
+          steps: String(steps),
+          safetyNotes: String(safetyNotes),
+        },
+      }),
+    ),
+  );
 
   const inventory = [
     ["FLT-24X24-MERV13", "MERV 13 Filter", "HVAC", "pcs", 34, 50, 45, "Gulf MEP Supplies"],
@@ -401,6 +571,21 @@ async function main() {
       }),
     ),
   );
+
+  const seededIssues = [
+    ["FLT-24X24-MERV13", "WO-81024", 2],
+    ["LED-PNL-60W", "WO-81027", 1],
+  ] as const;
+  for (const [sku, woNo, quantity] of seededIssues) {
+    const [item, work] = await Promise.all([
+      prisma.inventoryItem.findUnique({ where: { sku } }),
+      prisma.workOrder.findUnique({ where: { woNo } }),
+    ]);
+    if (item && work) {
+      await prisma.inventoryIssue.create({ data: { itemId: item.id, workId: work.id, quantity } });
+      await prisma.inventoryItem.update({ where: { id: item.id }, data: { onHand: Math.max(0, item.onHand - quantity) } });
+    }
+  }
 
   const vendor = await prisma.vendor.upsert({
     where: { id: "vendor-gulf-mep" },
