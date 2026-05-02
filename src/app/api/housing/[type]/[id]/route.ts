@@ -7,13 +7,19 @@ import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.record(z.unknown());
 const closedBookingStatuses = ["CHECKED_OUT", "REJECTED", "CANCELLED", "NO_SHOW", "TRANSFERRED"];
+const approvalSteps = [
+  { step: 1, level: "Housing Coordinator Review", next: "Housing Supervisor" },
+  { step: 2, level: "Housing Supervisor Approval", next: "Camp Manager" },
+  { step: 3, level: "Camp Manager Final Approval", next: "Reception Team" },
+  { step: 4, level: "Reception Allocation", next: "" },
+];
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ type: string; id: string }> }) {
   try {
     const { type, id } = await params;
     const input = bodySchema.parse(await request.json());
     const user = await getCurrentUser();
-    const record = await updateHousingRecord(type, id, input, user?.name || user?.email || "System");
+    const record = await updateHousingRecord(type, id, input, user);
     await auditAction({ user, action: `HOUSING_${type.toUpperCase()}_UPDATE`, entity: `housing_${type}`, entityId: id, details: String(input.status || input.remarks || input.notes || "") });
     return NextResponse.json(record);
   } catch (error) {
@@ -33,11 +39,17 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ type: s
   }
 }
 
-async function updateHousingRecord(type: string, id: string, input: Record<string, unknown>, actor: string) {
+async function updateHousingRecord(type: string, id: string, input: Record<string, unknown>, user: Awaited<ReturnType<typeof getCurrentUser>>) {
+  const actor = user?.name || user?.email || "System";
   if (type === "booking") {
     const status = text(input.status);
     const current = await prisma.housingBooking.findUnique({ where: { id }, include: { bed: true, room: true } });
     if (!current) throw new Error("Booking not found.");
+    if (status === "CHECKED_IN") {
+      const role = String(user?.role || "").toLowerCase();
+      if (!role.includes("reception") && role !== "admin") throw new Error("Only Reception Team can execute final room allocation.");
+      if (current.status !== "APPROVED") throw new Error("Room allocation can be executed only after Camp Manager final approval.");
+    }
     const nextRoomId = text(input.roomId) || current.roomId;
     const nextRoom = nextRoomId !== current.roomId ? await prisma.housingRoom.findUnique({ where: { id: nextRoomId } }) : current.room;
     if (!nextRoom) throw new Error("Selected room does not exist.");
@@ -165,10 +177,7 @@ async function updateHousingRecord(type: string, id: string, input: Record<strin
   }
 
   if (type === "approval") {
-    return prisma.housingApproval.update({
-      where: { id },
-      data: { status: text(input.status) as any, remarks: text(input.remarks) || text(input.notes) || undefined, approver: text(input.approver) || undefined },
-    });
+    return updateHousingApproval(id, input, user);
   }
 
   if (type === "notification") {
@@ -176,6 +185,54 @@ async function updateHousingRecord(type: string, id: string, input: Record<strin
   }
 
   throw new Error(`Unsupported housing record type: ${type}`);
+}
+
+async function updateHousingApproval(id: string, input: Record<string, unknown>, user: Awaited<ReturnType<typeof getCurrentUser>>) {
+  const actor = user?.name || user?.email || "System";
+  const action = (text(input.action) || text(input.status) || "APPROVED").toUpperCase();
+  const remarks = text(input.remarks) || text(input.notes) || text(input.comment);
+  if (!["APPROVED", "REJECTED", "RETURNED"].includes(action)) throw new Error("Approval action must be approve, reject, or return for correction.");
+  const approval = await prisma.housingApproval.findUnique({ where: { id }, include: { booking: true } });
+  if (!approval || !approval.bookingId || !approval.booking) throw new Error("Approval record not found.");
+  if (approval.status !== "PENDING") throw new Error("Only the current pending approval can be actioned.");
+  if (!canActApproval(user?.role || "", approval.level)) throw new Error(`Only ${approval.level} approvers can action this step.`);
+
+  const nextStep = approvalSteps.find((step) => step.step === approval.step + 1);
+  const nextStatus = action === "APPROVED" ? "APPROVED" : action === "REJECTED" ? "REJECTED" : "RETURNED";
+  const updated = await prisma.$transaction(async (tx) => {
+    const currentApproval = await tx.housingApproval.update({
+      where: { id },
+      data: { status: nextStatus as any, action, remarks, approverName: actor, actedAt: new Date(), approver: actor },
+    });
+    if (action === "REJECTED") {
+      await tx.housingBooking.update({ where: { id: approval.bookingId! }, data: { status: "REJECTED", approvalLevel: approval.level, approvedBy: actor, notes: remarks || approval.booking?.notes || "" } });
+      await tx.housingNotification.create({ data: { title: "Housing booking rejected", message: `${approval.booking?.bookingNo} was rejected at ${approval.level}.`, recipient: approval.booking?.requestedBy || "Requester", severity: "HIGH", bookingId: approval.bookingId } });
+    } else if (action === "RETURNED") {
+      await tx.housingBooking.update({ where: { id: approval.bookingId! }, data: { status: "REQUESTED", approvalLevel: "Requester Correction", notes: remarks || approval.booking?.notes || "" } });
+      await tx.housingNotification.create({ data: { title: "Housing booking returned for correction", message: `${approval.booking?.bookingNo} requires correction: ${remarks || "No remarks provided"}.`, recipient: approval.booking?.requestedBy || "Requester", severity: "MEDIUM", bookingId: approval.bookingId } });
+    } else if (nextStep) {
+      await tx.housingApproval.updateMany({ where: { bookingId: approval.bookingId, step: nextStep.step, status: "WAITING" as any }, data: { status: "PENDING" as any } });
+      await tx.housingBooking.update({ where: { id: approval.bookingId! }, data: { status: "PENDING_APPROVAL", approvalLevel: nextStep.level, approvedBy: actor } });
+      await tx.housingNotification.create({ data: { title: "Housing booking pending approval", message: `${approval.booking?.bookingNo} is waiting for ${nextStep.level}.`, recipient: nextStep.next || nextStep.level, severity: approval.booking?.priority || "MEDIUM", bookingId: approval.bookingId } });
+    } else {
+      await tx.housingBooking.update({ where: { id: approval.bookingId! }, data: { status: "APPROVED", approvalLevel: "Reception Allocation", approvedBy: actor } });
+      await tx.housingNotification.create({ data: { title: "Housing booking ready for reception allocation", message: `${approval.booking?.bookingNo} has final approval. Reception can check in and hand over room key.`, recipient: "Reception Team", severity: approval.booking?.priority || "MEDIUM", bookingId: approval.bookingId } });
+    }
+    await tx.housingHistory.create({ data: { entity: "approval", entityId: currentApproval.id, bookingId: approval.bookingId, roomId: approval.booking?.roomId, actor, action: `${approval.level} ${action}`, details: remarks } });
+    return currentApproval;
+  });
+  return updated;
+}
+
+function canActApproval(role: string, level: string) {
+  const lowerRole = role.toLowerCase();
+  const lowerLevel = level.toLowerCase();
+  if (lowerRole === "admin" || lowerRole.includes("super admin")) return true;
+  if (lowerLevel.includes("coordinator")) return lowerRole.includes("coordinator") || lowerRole.includes("housing");
+  if (lowerLevel.includes("supervisor")) return lowerRole.includes("supervisor");
+  if (lowerLevel.includes("camp manager")) return lowerRole.includes("camp") || lowerRole.includes("manager");
+  if (lowerLevel.includes("reception")) return lowerRole.includes("reception");
+  return false;
 }
 
 async function deleteHousingRecord(type: string, id: string) {

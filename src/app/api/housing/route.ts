@@ -6,6 +6,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const activeBookingStatuses = ["REQUESTED", "PENDING_APPROVAL", "APPROVED", "CHECKED_IN"];
+const bookingApprovalSteps = [
+  { step: 1, level: "Housing Coordinator Review", approver: "Housing Coordinator" },
+  { step: 2, level: "Housing Supervisor Approval", approver: "Housing Supervisor" },
+  { step: 3, level: "Camp Manager Final Approval", approver: "Camp Manager" },
+  { step: 4, level: "Reception Allocation", approver: "Reception Team" },
+];
 
 const housingSchema = z.object({
   type: z.string(),
@@ -364,11 +370,11 @@ async function createBooking(input: z.infer<typeof housingSchema>, actor: string
         bedId: bed?.id,
         checkIn: input.checkIn ? new Date(input.checkIn) : new Date(),
         checkOut: input.checkOut ? new Date(input.checkOut) : undefined,
-        status: (input.status as any) || "PENDING_APPROVAL",
+        status: "PENDING_APPROVAL",
         priority: (input.priority as any) || "MEDIUM",
         requestedBy: input.requestedBy || actor,
         approvedBy: input.approvedBy || "",
-        approvalLevel: input.approvalLevel || "Housing Supervisor",
+        approvalLevel: bookingApprovalSteps[0].level,
         attachmentUrls: input.attachmentUrls || "",
         notes: input.notes || "",
         keyHandoverBy: input.keyHandoverBy || "",
@@ -377,27 +383,27 @@ async function createBooking(input: z.infer<typeof housingSchema>, actor: string
         campIdIssuedAt: input.campIdIssuedAt ? new Date(input.campIdIssuedAt) : undefined,
       },
     });
-    await tx.housingApproval.create({
-      data: {
+    await tx.housingApproval.createMany({
+      data: bookingApprovalSteps.map((step) => ({
         entity: "booking",
         entityId: created.id,
         bookingId: created.id,
-        level: created.approvalLevel,
-        approver: created.approvedBy || "Housing Supervisor",
-        status: created.status === "APPROVED" || created.status === "CHECKED_IN" ? "APPROVED" : "PENDING",
-        remarks: created.notes || "",
-      },
+        level: step.level,
+        step: step.step,
+        approver: step.approver,
+        status: step.step === 1 ? "PENDING" : "WAITING",
+        remarks: step.step === 1 ? created.notes || "" : "",
+      })),
     });
     await tx.housingNotification.create({
       data: {
-        title: "Housing booking pending approval",
-        message: `${created.bookingNo} for ${created.residentName} requires review.`,
-        recipient: created.approvedBy || "Housing Supervisor",
+        title: "Housing booking pending coordinator review",
+        message: `${created.bookingNo} for ${created.residentName} is waiting for Housing Coordinator review.`,
+        recipient: bookingApprovalSteps[0].approver,
         severity: created.priority,
         bookingId: created.id,
       },
     });
-    if (bed) await tx.housingBed.update({ where: { id: bed.id }, data: { status: "RESERVED", occupant: created.residentName, occupantId: resident?.id || input.residentId || "" } });
     return created;
   });
   await refreshRoomOccupancy(room.id);

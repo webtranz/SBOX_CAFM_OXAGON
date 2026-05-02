@@ -67,9 +67,11 @@ enum HousingInspectionStatus {
 }
 
 enum HousingApprovalStatus {
+  WAITING
   PENDING
   APPROVED
   REJECTED
+  RETURNED
   ESCALATED
 }
 
@@ -679,12 +681,19 @@ model HousingApproval {
   entityId    String
   bookingId   String?
   level       String
+  step        Int                   @default(1)
   approver    String
   status      HousingApprovalStatus @default(PENDING)
+  action      String?
+  approverName String?
   remarks     String?
+  actedAt     DateTime?
   booking     HousingBooking?       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
+
+  @@index([bookingId, step])
+  @@index([status, level])
 }
 
 model HousingNotification {

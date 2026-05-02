@@ -724,6 +724,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               saving={saving}
               canManage={can("housing.manage")}
               canApprove={can("housing.approve")}
+              userRole={user.role}
               submitHousing={(formData) => postRecord("/api/housing", formData, "Housing record")}
               updateHousing={(type, id, body) => patchRecord(`/api/housing/${type}/${id}`, body, "Housing record updated.")}
               deleteHousing={(type, id) => deleteRecord(`/api/housing/${type}/${id}`, "Housing record deleted.")}
@@ -4184,6 +4185,7 @@ function HousingOperations({
   saving,
   canManage,
   canApprove,
+  userRole,
   submitHousing,
   updateHousing,
   deleteHousing,
@@ -4193,6 +4195,7 @@ function HousingOperations({
   saving: boolean;
   canManage: boolean;
   canApprove: boolean;
+  userRole: string;
   submitHousing: (formData: FormData) => void;
   updateHousing: (type: string, id: string, body: Record<string, unknown>) => Promise<void> | void;
   deleteHousing: (type: string, id: string) => Promise<void> | void;
@@ -4337,6 +4340,14 @@ function HousingOperations({
     view === "housing-inventory" ? "inventory" :
     view === "housing-approvals" ? "approvals" :
     view === "housing-reports" ? "reports" : "dashboard";
+  const canReceptionAllocate = String(userRole || "").toLowerCase().includes("reception") || userRole === "Admin";
+  const currentApprovalFor = (booking: any) => (booking.approvals || []).find((approval: any) => approval.status === "PENDING");
+  const approvalAction = (approval: any, action: "APPROVED" | "REJECTED" | "RETURNED") => {
+    const label = action === "RETURNED" ? "Return for correction" : action === "REJECTED" ? "Reject" : "Approve";
+    const remarks = window.prompt(`${label} comments`, action === "APPROVED" ? "Reviewed and accepted" : "");
+    if (remarks === null) return;
+    updateHousing("approval", approval.id, { action, remarks, status: action });
+  };
 
   return (
     <section className="grid gap-5">
@@ -4377,6 +4388,8 @@ function HousingOperations({
             <option>FAILED</option>
             <option>ACTIVE</option>
             <option>PENDING</option>
+            <option>WAITING</option>
+            <option>RETURNED</option>
           </select>
           <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold">
             <option>All</option>
@@ -4431,7 +4444,7 @@ function HousingOperations({
               onSelect={(record) => setSelected({ type: "booking", record })}
               reportType="housing-bookings"
             />
-            <HousingAlerts notifications={notifications} approvals={dashboardApprovals} onApprove={(id, nextStatus) => updateHousing("approval", id, { status: nextStatus })} canApprove={canApprove} />
+            <HousingAlerts notifications={notifications} approvals={dashboardApprovals} onApprove={(approval, action) => approvalAction(approval, action as any)} canApprove={canApprove} />
           </div>
         </section>
       )}
@@ -4454,8 +4467,9 @@ function HousingOperations({
               reportType="housing-bookings"
               actions={(record) => canApprove && (
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("booking", record.id, { status: "APPROVED", approvedBy: "Housing Supervisor" }); }} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Approve</button>
-                  <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("booking", record.id, { status: "CHECKED_IN", keyHandoverBy: "Housing Desk", keyHandoverAt: new Date().toISOString() }); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Check-in</button>
+                  {currentApprovalFor(record) && <button type="button" onClick={(event) => { event.stopPropagation(); approvalAction(currentApprovalFor(record), "APPROVED"); }} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Approve Step</button>}
+                  {currentApprovalFor(record) && <button type="button" onClick={(event) => { event.stopPropagation(); approvalAction(currentApprovalFor(record), "RETURNED"); }} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-black text-white">Return</button>}
+                  {canReceptionAllocate && record.status === "APPROVED" && <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("booking", record.id, { status: "CHECKED_IN", keyHandoverBy: "Reception Team", keyHandoverAt: new Date().toISOString() }); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Allocate</button>}
                   <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("booking", record.id, { status: "CHECKED_OUT", checkOut: new Date().toISOString() }); }} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white">Check-out</button>
                   <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("booking", record.id, { status: "CANCELLED", cancellationReason: "Cancelled by housing admin" }); }} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white">Cancel</button>
                 </div>
@@ -4496,7 +4510,7 @@ function HousingOperations({
 
       {activePanel === "approvals" && (
         <section className="grid gap-5 xl:grid-cols-2">
-          <HousingAlerts notifications={notifications} approvals={visibleApprovals} onApprove={(id, nextStatus) => updateHousing("approval", id, { status: nextStatus })} canApprove={canApprove} />
+          <HousingAlerts notifications={notifications} approvals={visibleApprovals} onApprove={(approval, action) => approvalAction(approval, action as any)} canApprove={canApprove} />
           <HousingTable title="Housing History & Audit Trail" rows={visibleHistory} columns={[["entity", "Entity"], ["action", "Action"], ["actor", "Actor"], ["details", "Details"], ["createdAt", "Time"]]} reportType="housing-history" />
         </section>
       )}
@@ -4648,14 +4662,14 @@ function HousingCellValue({ value }: { value: any }) {
   if (typeof value === "string") {
     const status = value.toUpperCase();
     if (["AVAILABLE", "APPROVED", "PASSED", "CHECKED_IN", "ACTIVE"].includes(status)) return <span className="rounded-lg bg-leaf/10 px-2 py-1 font-black text-leaf">{value}</span>;
-    if (["REQUESTED", "PENDING", "PENDING_APPROVAL", "SCHEDULED", "RESERVED"].includes(status)) return <span className="rounded-lg bg-amber-100 px-2 py-1 font-black text-amber-700">{value}</span>;
+    if (["REQUESTED", "PENDING", "WAITING", "PENDING_APPROVAL", "SCHEDULED", "RESERVED"].includes(status)) return <span className="rounded-lg bg-amber-100 px-2 py-1 font-black text-amber-700">{value}</span>;
     if (["OCCUPIED", "IN_PROGRESS", "CHECKED_OUT", "CLOSED"].includes(status)) return <span className="rounded-lg bg-lagoon/10 px-2 py-1 font-black text-lagoon">{value}</span>;
-    if (["REJECTED", "CANCELLED", "FAILED", "MAINTENANCE", "BLOCKED", "CRITICAL", "HIGH"].includes(status)) return <span className="rounded-lg bg-coral/10 px-2 py-1 font-black text-coral">{value}</span>;
+    if (["REJECTED", "RETURNED", "CANCELLED", "FAILED", "MAINTENANCE", "BLOCKED", "CRITICAL", "HIGH"].includes(status)) return <span className="rounded-lg bg-coral/10 px-2 py-1 font-black text-coral">{value}</span>;
   }
   return <CellValue value={value} />;
 }
 
-function HousingAlerts({ notifications, approvals, onApprove, canApprove }: { notifications: any[]; approvals: any[]; onApprove: (id: string, status: string) => void; canApprove: boolean }) {
+function HousingAlerts({ notifications, approvals, onApprove, canApprove }: { notifications: any[]; approvals: any[]; onApprove: (approval: any, action: string) => void; canApprove: boolean }) {
   return (
     <Panel title="Approval Workflow, Notifications & Alerts" icon={AlertTriangle}>
       <div className="grid gap-3">
@@ -4663,13 +4677,15 @@ function HousingAlerts({ notifications, approvals, onApprove, canApprove }: { no
           <div key={approval.id} className="rounded-lg border border-slate-200 bg-white p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="font-black">{approval.level} approval</p>
-                <p className="text-sm font-bold text-slate-500">{approval.entity} / {approval.status}</p>
+                <p className="font-black">{approval.level}</p>
+                <p className="text-sm font-bold text-slate-500">Step {approval.step || 1} / {approval.entity} / {approval.status}</p>
+                {approval.remarks && <p className="mt-1 text-xs font-bold text-slate-500">{approval.remarks}</p>}
               </div>
               {canApprove && approval.status === "PENDING" && (
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => onApprove(approval.id, "APPROVED")} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Approve</button>
-                  <button type="button" onClick={() => onApprove(approval.id, "REJECTED")} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white">Reject</button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onApprove(approval, "APPROVED")} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Approve</button>
+                  <button type="button" onClick={() => onApprove(approval, "RETURNED")} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-black text-white">Return</button>
+                  <button type="button" onClick={() => onApprove(approval, "REJECTED")} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white">Reject</button>
                 </div>
               )}
             </div>

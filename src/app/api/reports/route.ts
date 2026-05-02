@@ -220,7 +220,7 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
   }
   if (type === "housing-approvals") {
     const rows = await prisma.housingApproval.findMany({ orderBy: { createdAt: "desc" } });
-    return rows.map((row) => ({ entity: row.entity, entityId: row.entityId, level: row.level, approver: row.approver, status: row.status, remarks: row.remarks, createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) }));
+    return rows.map((row) => ({ entity: row.entity, entityId: row.entityId, step: row.step, level: row.level, approver: row.approver, status: row.status, action: row.action, approverName: row.approverName, remarks: row.remarks, actedAt: dateValue(row.actedAt), createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) }));
   }
   if (type === "housing-notifications") {
     const rows = await prisma.housingNotification.findMany({ orderBy: { createdAt: "desc" } });
