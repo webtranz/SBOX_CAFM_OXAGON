@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError } from "@/lib/api-response";
 import { auditAction } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/auth";
+import { ensureHousingNotificationSettings } from "@/lib/housing-alerts";
 import { prisma } from "@/lib/prisma";
 
 const activeBookingStatuses = ["REQUESTED", "PENDING_APPROVAL", "APPROVED", "CHECKED_IN"];
@@ -157,6 +158,15 @@ const housingSchema = z.object({
   message: z.string().optional(),
   recipient: z.string().optional(),
   severity: z.string().optional(),
+  alertType: z.string().optional(),
+  channel: z.string().optional(),
+  role: z.string().optional(),
+  channels: z.string().optional(),
+  roles: z.string().optional(),
+  enabled: z.coerce.boolean().optional(),
+  leadDays: z.coerce.number().int().min(0).optional(),
+  thresholdDays: z.coerce.number().int().min(0).optional(),
+  label: z.string().optional(),
 });
 
 export async function GET() {
@@ -172,6 +182,7 @@ export async function GET() {
     inventory,
     approvals,
     notifications,
+    notificationSettings,
     history,
   ] = await Promise.all([
     prisma.housingProperty.findMany({ orderBy: { name: "asc" } }),
@@ -185,10 +196,11 @@ export async function GET() {
     prisma.housingInventory.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { sku: "asc" } }),
     prisma.housingApproval.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.housingNotification.findMany({ orderBy: { createdAt: "desc" }, take: 100 }),
+    ensureHousingNotificationSettings(),
     prisma.housingHistory.findMany({ orderBy: { createdAt: "desc" }, take: 300 }),
   ]);
 
-  return NextResponse.json({ properties, blocks, rooms, beds, residents, bookings, inspections, assets, inventory, approvals, notifications, history });
+  return NextResponse.json({ properties, blocks, rooms, beds, residents, bookings, inspections, assets, inventory, approvals, notifications, notificationSettings, history });
 }
 
 export async function POST(request: Request) {
@@ -378,11 +390,49 @@ async function createHousingRecord(input: z.infer<typeof housingSchema>, actor: 
   if (input.type === "notification") {
     return prisma.housingNotification.create({
       data: {
+        alertType: input.alertType || "MANUAL",
+        channel: input.channel || "SYSTEM",
+        role: input.role || "",
         title: input.title || "Housing Alert",
         message: input.message || input.notes || "Housing notification",
         recipient: input.recipient || actor,
         severity: (input.severity as any) || "MEDIUM",
+        status: input.channel && input.channel !== "SYSTEM" ? "QUEUED" : "SENT",
+        entity: input.entity,
+        entityId: input.entityId,
+        sentAt: !input.channel || input.channel === "SYSTEM" ? new Date() : undefined,
         bookingId: input.bookingId,
+      },
+    });
+  }
+
+  if (input.type === "notification-setting") {
+    const alertType = input.alertType || input.code || "";
+    if (!alertType) throw new Error("Alert type is required.");
+    return prisma.housingNotificationSetting.upsert({
+      where: { alertType },
+      update: {
+        label: input.label || input.name || alertType,
+        enabled: input.enabled ?? true,
+        roles: input.roles || input.role || "Admin,Housing Supervisor",
+        channels: input.channels || input.channel || "SYSTEM",
+        leadDays: input.leadDays ?? 3,
+        thresholdDays: input.thresholdDays ?? 0,
+        severity: (input.severity as any) || "MEDIUM",
+        description: input.description || input.notes || "",
+        updatedBy: actor,
+      },
+      create: {
+        alertType,
+        label: input.label || input.name || alertType,
+        enabled: input.enabled ?? true,
+        roles: input.roles || input.role || "Admin,Housing Supervisor",
+        channels: input.channels || input.channel || "SYSTEM",
+        leadDays: input.leadDays ?? 3,
+        thresholdDays: input.thresholdDays ?? 0,
+        severity: (input.severity as any) || "MEDIUM",
+        description: input.description || input.notes || "",
+        updatedBy: actor,
       },
     });
   }

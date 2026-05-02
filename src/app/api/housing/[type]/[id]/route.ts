@@ -254,7 +254,33 @@ async function updateHousingRecord(type: string, id: string, input: Record<strin
   }
 
   if (type === "notification") {
-    return prisma.housingNotification.update({ where: { id }, data: { read: Boolean(input.read) } });
+    return prisma.housingNotification.update({
+      where: { id },
+      data: {
+        read: Boolean(input.read),
+        status: text(input.status) || undefined,
+        channel: text(input.channel) || undefined,
+        role: text(input.role) || undefined,
+        recipient: text(input.recipient) || undefined,
+        sentAt: text(input.status) === "SENT" ? new Date() : undefined,
+      },
+    });
+  }
+
+  if (type === "notification-setting") {
+    return prisma.housingNotificationSetting.update({
+      where: { id },
+      data: {
+        enabled: booleanValue(input.enabled),
+        roles: text(input.roles) || undefined,
+        channels: text(input.channels) || undefined,
+        leadDays: numberValue(input.leadDays),
+        thresholdDays: numberValue(input.thresholdDays),
+        severity: text(input.severity) as any,
+        description: text(input.description) || text(input.notes) || undefined,
+        updatedBy: actor,
+      },
+    });
   }
 
   throw new Error(`Unsupported housing record type: ${type}`);
@@ -321,6 +347,7 @@ async function deleteHousingRecord(type: string, id: string) {
   if (type === "inventory") return void await prisma.housingInventory.delete({ where: { id } });
   if (type === "approval") return void await prisma.housingApproval.delete({ where: { id } });
   if (type === "notification") return void await prisma.housingNotification.delete({ where: { id } });
+  if (type === "notification-setting") return void await prisma.housingNotificationSetting.delete({ where: { id } });
   if (type === "property") return void await prisma.housingProperty.delete({ where: { id } });
   if (type === "block") return void await prisma.housingBlock.delete({ where: { id } });
   throw new Error(`Unsupported housing record type: ${type}`);

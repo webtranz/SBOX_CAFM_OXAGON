@@ -864,6 +864,21 @@ async function main() {
       qrCode: "QR:HSI-PPE-GLOVE",
     },
   });
+  const housingAlertSettings = [
+    ["UPCOMING_CHECKOUT", "Upcoming check-out", "Housing Supervisor,Reception Team", "SYSTEM,EMAIL"],
+    ["OVERSTAY_OCCUPANT", "Overstay occupants", "Housing Supervisor,Camp Manager", "SYSTEM,EMAIL,SMS"],
+    ["LOW_STOCK", "Low stock inventory", "Housing Inventory Manager,Housing Supervisor", "SYSTEM,EMAIL"],
+    ["PENDING_APPROVAL", "Pending approvals", "Housing Coordinator,Housing Supervisor,Camp Manager,Reception Team", "SYSTEM,EMAIL"],
+  ] as const;
+  await Promise.all(
+    housingAlertSettings.map(([alertType, label, roles, channels]) =>
+      prisma.housingNotificationSetting.upsert({
+        where: { alertType },
+        update: {},
+        create: { alertType, label, roles, channels, enabled: true, description: `${label} automatic alert`, severity: "MEDIUM" },
+      }),
+    ),
+  );
   await prisma.housingHistory.createMany({
     data: [
       { entity: "room", entityId: housingRooms[0].id, roomId: housingRooms[0].id, action: "Room seeded", actor: "System", details: "Initial room occupancy loaded." },

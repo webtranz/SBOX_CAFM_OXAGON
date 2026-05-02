@@ -330,7 +330,11 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
   }
   if (type === "housing-notifications") {
     const rows = await prisma.housingNotification.findMany({ orderBy: { createdAt: "desc" } });
-    return rows.map((row) => ({ title: row.title, message: row.message, severity: row.severity, recipient: row.recipient, read: row.read, createdAt: dateValue(row.createdAt) }));
+    return rows.map((row) => ({ alertType: row.alertType, channel: row.channel, role: row.role, title: row.title, message: row.message, severity: row.severity, recipient: row.recipient, status: row.status, read: row.read, entity: row.entity, entityId: row.entityId, queuedAt: dateValue(row.queuedAt), sentAt: dateValue(row.sentAt), deliveryRef: row.deliveryRef, createdAt: dateValue(row.createdAt) }));
+  }
+  if (type === "housing-notification-settings") {
+    const rows = await prisma.housingNotificationSetting.findMany({ orderBy: { label: "asc" } });
+    return rows.map((row) => ({ alertType: row.alertType, label: row.label, enabled: row.enabled, roles: row.roles, channels: row.channels, leadDays: row.leadDays, thresholdDays: row.thresholdDays, severity: row.severity, description: row.description, updatedBy: row.updatedBy, createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) }));
   }
   if (type === "housing-history") {
     const rows = await prisma.housingHistory.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });

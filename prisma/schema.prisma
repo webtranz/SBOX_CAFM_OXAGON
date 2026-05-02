@@ -772,14 +772,43 @@ model HousingApproval {
 
 model HousingNotification {
   id        String          @id @default(cuid())
+  alertType String?
+  channel   String          @default("SYSTEM")
+  role      String?
   title     String
   message   String
   severity  Priority        @default(MEDIUM)
   recipient String
+  status    String          @default("QUEUED")
   read      Boolean         @default(false)
+  entity    String?
+  entityId  String?
+  queuedAt  DateTime        @default(now())
+  sentAt    DateTime?
+  deliveryRef String?
   bookingId String?
   booking   HousingBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   createdAt DateTime        @default(now())
+
+  @@index([alertType, createdAt])
+  @@index([status, channel])
+  @@index([entity, entityId])
+}
+
+model HousingNotificationSetting {
+  id          String   @id @default(cuid())
+  alertType   String   @unique
+  label       String
+  enabled     Boolean  @default(true)
+  roles       String   @default("Admin,Housing Supervisor")
+  channels    String   @default("SYSTEM")
+  leadDays    Int      @default(3)
+  thresholdDays Int    @default(0)
+  severity    Priority @default(MEDIUM)
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model HousingHistory {

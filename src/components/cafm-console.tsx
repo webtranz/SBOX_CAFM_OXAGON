@@ -76,6 +76,7 @@ type ConsoleData = {
     inventory: any[];
     approvals: any[];
     notifications: any[];
+    notificationSettings: any[];
     history: any[];
   };
 };
@@ -123,6 +124,7 @@ const moduleGroups = [
       { id: "housing", label: "Housing Assets", icon: Building2, view: "housing-assets" },
       { id: "housing", label: "Housing Inventory", icon: Boxes, view: "housing-inventory" },
       { id: "housing", label: "Approvals & Alerts", icon: ShieldCheck, view: "housing-approvals" },
+      { id: "housing", label: "Notification Settings", icon: AlertTriangle, view: "housing-notifications" },
       { id: "housing", label: "Housing Reports", icon: Gauge, view: "housing-reports" },
     ],
   },
@@ -728,6 +730,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               submitHousing={(formData) => postRecord("/api/housing", formData, "Housing record")}
               updateHousing={(type, id, body) => patchRecord(`/api/housing/${type}/${id}`, body, "Housing record updated.")}
               deleteHousing={(type, id) => deleteRecord(`/api/housing/${type}/${id}`, "Housing record deleted.")}
+              refreshData={refreshData}
             />
           )}
         </section>
@@ -4189,6 +4192,7 @@ function HousingOperations({
   submitHousing,
   updateHousing,
   deleteHousing,
+  refreshData,
 }: {
   housing: ConsoleData["housing"];
   view: string;
@@ -4199,6 +4203,7 @@ function HousingOperations({
   submitHousing: (formData: FormData) => void;
   updateHousing: (type: string, id: string, body: Record<string, unknown>) => Promise<void> | void;
   deleteHousing: (type: string, id: string) => Promise<void> | void;
+  refreshData: () => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
@@ -4209,6 +4214,7 @@ function HousingOperations({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selected, setSelected] = useState<{ type: string; record: any } | null>(null);
+  const [runningAlerts, setRunningAlerts] = useState(false);
   const rooms = housing?.rooms ?? [];
   const bookings = housing?.bookings ?? [];
   const inspections = housing?.inspections ?? [];
@@ -4216,6 +4222,7 @@ function HousingOperations({
   const inventory = housing?.inventory ?? [];
   const approvals = housing?.approvals ?? [];
   const notifications = housing?.notifications ?? [];
+  const notificationSettings = housing?.notificationSettings ?? [];
   const history = housing?.history ?? [];
   const todayKey = new Date().toISOString().slice(0, 10);
   const roomBuilding = (room: any) => room?.block?.name || room?.property?.name || "Unassigned";
@@ -4339,6 +4346,7 @@ function HousingOperations({
     view === "housing-assets" ? "assets" :
     view === "housing-inventory" ? "inventory" :
     view === "housing-approvals" ? "approvals" :
+    view === "housing-notifications" ? "notifications" :
     view === "housing-reports" ? "reports" : "dashboard";
   const canReceptionAllocate = String(userRole || "").toLowerCase().includes("reception") || userRole === "Admin";
   const currentApprovalFor = (booking: any) => (booking.approvals || []).find((approval: any) => approval.status === "PENDING");
@@ -4347,6 +4355,12 @@ function HousingOperations({
     const remarks = window.prompt(`${label} comments`, action === "APPROVED" ? "Reviewed and accepted" : "");
     if (remarks === null) return;
     updateHousing("approval", approval.id, { action, remarks, status: action });
+  };
+  const runAlertChecks = async () => {
+    setRunningAlerts(true);
+    await fetch("/api/housing/alerts", { method: "POST" });
+    await refreshData();
+    setRunningAlerts(false);
   };
 
   return (
@@ -4543,6 +4557,31 @@ function HousingOperations({
         </section>
       )}
 
+      {activePanel === "notifications" && (
+        <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+          <div className="grid gap-5">
+            <Panel title="Automatic Notifications & Alerts" icon={AlertTriangle}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-slate-500">Daily scheduler endpoint</p>
+                  <p className="font-black text-ink">POST /api/housing/alerts</p>
+                </div>
+                <button type="button" onClick={runAlertChecks} disabled={runningAlerts} className="rounded-lg bg-lagoon px-4 py-2 text-sm font-black text-white disabled:bg-slate-400">{runningAlerts ? "Running..." : "Run Alert Check"}</button>
+              </div>
+            </Panel>
+            <HousingTable
+              title="Notification History"
+              rows={notifications}
+              columns={[["alertType", "Alert"], ["channel", "Channel"], ["role", "Role"], ["title", "Title"], ["recipient", "Recipient"], ["severity", "Severity"], ["status", "Status"], ["sentAt", "Sent"], ["createdAt", "Created"]]}
+              onSelect={(record) => setSelected({ type: "notification", record })}
+              reportType="housing-notifications"
+              actions={(record) => canManage && <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("notification", record.id, { read: true, status: "SENT" }); }} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Mark Sent</button>}
+            />
+          </div>
+          <HousingNotificationSettings settings={notificationSettings} saving={saving} canManage={canManage} onSubmit={submitHousing} onUpdate={(id, body) => updateHousing("notification-setting", id, body)} />
+        </section>
+      )}
+
       {activePanel === "reports" && (
         <Panel title="Housing Reports" icon={Gauge}>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -4554,6 +4593,7 @@ function HousingOperations({
               ["housing-inventory", "Housing Inventory"],
               ["housing-approvals", "Approval Workflow"],
               ["housing-notifications", "Notifications"],
+              ["housing-notification-settings", "Notification Settings"],
               ["housing-history", "History"],
             ].map(([type, label]) => <ReportButtons key={type} type={type} label={label} />)}
           </div>
@@ -4725,6 +4765,62 @@ function HousingAlerts({ notifications, approvals, onApprove, canApprove }: { no
             <p className="mt-1 font-bold text-amber-900/80">{notification.message}</p>
           </div>
         ))}
+      </div>
+    </Panel>
+  );
+}
+
+function HousingNotificationSettings({ settings, saving, canManage, onSubmit, onUpdate }: { settings: any[]; saving: boolean; canManage: boolean; onSubmit: (formData: FormData) => void; onUpdate: (id: string, body: Record<string, unknown>) => void }) {
+  return (
+    <Panel title="Notification Settings" icon={ShieldCheck}>
+      <div className="grid gap-3">
+        {settings.map((setting) => (
+          <div key={setting.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-black">{setting.label}</p>
+                <p className="text-xs font-bold text-slate-500">{setting.alertType}</p>
+                <p className="mt-1 text-sm text-slate-600">{setting.description}</p>
+              </div>
+              <span className={`rounded-lg px-2 py-1 text-xs font-black ${setting.enabled ? "bg-leaf/10 text-leaf" : "bg-slate-100 text-slate-500"}`}>{setting.enabled ? "Enabled" : "Disabled"}</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
+              <span>Roles: {setting.roles}</span>
+              <span>Channels: {setting.channels}</span>
+              <span>Lead days: {setting.leadDays} / Threshold days: {setting.thresholdDays}</span>
+            </div>
+            {canManage && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => onUpdate(setting.id, { enabled: !setting.enabled })} className={`rounded-lg px-3 py-2 text-xs font-black text-white ${setting.enabled ? "bg-coral" : "bg-leaf"}`}>{setting.enabled ? "Disable" : "Enable"}</button>
+                <button type="button" onClick={() => onUpdate(setting.id, { channels: "SYSTEM,EMAIL,SMS,WHATSAPP" })} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">All Channels</button>
+                <button type="button" onClick={() => onUpdate(setting.id, { channels: "SYSTEM" })} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white">System Only</button>
+              </div>
+            )}
+          </div>
+        ))}
+        {canManage && (
+          <HousingForm title="Create / Update Alert Setting" type="notification-setting" saving={saving} onSubmit={onSubmit}>
+            <input name="alertType" placeholder="Alert type code" className={HOUSING_FIELD_CLASS} />
+            <input name="label" placeholder="Alert label" className={HOUSING_FIELD_CLASS} />
+            <textarea name="description" placeholder="Alert description" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+            <input name="roles" placeholder="Role-wise assignment, comma separated" className={HOUSING_FIELD_CLASS} />
+            <input name="channels" placeholder="Channels: SYSTEM,EMAIL,SMS,WHATSAPP" className={HOUSING_FIELD_CLASS} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <input name="leadDays" type="number" min="0" placeholder="Lead days" className={HOUSING_FIELD_CLASS} />
+              <input name="thresholdDays" type="number" min="0" placeholder="Threshold days" className={HOUSING_FIELD_CLASS} />
+            </div>
+            <select name="severity" className={HOUSING_FIELD_CLASS}>
+              <option>LOW</option>
+              <option>MEDIUM</option>
+              <option>HIGH</option>
+              <option>CRITICAL</option>
+            </select>
+            <label className="flex items-center gap-2 rounded-lg bg-leaf/10 p-3 text-sm font-black text-leaf">
+              <input type="checkbox" name="enabled" defaultChecked />
+              Enabled
+            </label>
+          </HousingForm>
+        )}
       </div>
     </Panel>
   );
@@ -5099,6 +5195,8 @@ function Reports() {
             <option value="housing-assets">Housing Assets</option>
             <option value="housing-inventory">Housing Inventory</option>
             <option value="housing-approvals">Housing Approvals</option>
+            <option value="housing-notifications">Housing Notifications</option>
+            <option value="housing-notification-settings">Housing Notification Settings</option>
             <option value="housing-history">Housing History</option>
           </select>
           <a className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white" href={exportUrl("csv")}>CSV</a>

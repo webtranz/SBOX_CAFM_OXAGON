@@ -59,7 +59,7 @@ export async function getOperatingData(user: OperatingUser = null) {
     const visibleJobPlanWhere = kind === "admin" || kind === "readonly" ? {} : kind === "supervisor" || kind === "technician" ? { departmentCode: { in: departmentsForUser } } : {};
     const visibleUsersWhere = kind === "admin" ? {} : { OR: [{ department: { in: departmentsForUser } }, { id: user?.id || "" }] };
 
-    const [sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, roles, auditLogs, housingProperties, housingBlocks, housingRooms, housingBeds, housingResidents, housingBookings, housingInspections, housingAssets, housingInventory, housingApprovals, housingNotifications, housingHistory] = await Promise.all([
+    const [sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, roles, auditLogs, housingProperties, housingBlocks, housingRooms, housingBeds, housingResidents, housingBookings, housingInspections, housingAssets, housingInventory, housingApprovals, housingNotifications, housingNotificationSettings, housingHistory] = await Promise.all([
       prisma.site.findMany({ orderBy: { name: "asc" } }),
       prisma.asset.findMany({
         where: visibleAssetWhere,
@@ -116,6 +116,7 @@ export async function getOperatingData(user: OperatingUser = null) {
       prisma.housingInventory.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { sku: "asc" } }),
       prisma.housingApproval.findMany({ orderBy: { createdAt: "desc" } }),
       prisma.housingNotification.findMany({ orderBy: { createdAt: "desc" }, take: 100 }),
+      prisma.housingNotificationSetting.findMany({ orderBy: { label: "asc" } }),
       prisma.housingHistory.findMany({ orderBy: { createdAt: "desc" }, take: 300 }),
     ]);
 
@@ -124,7 +125,7 @@ export async function getOperatingData(user: OperatingUser = null) {
 
     const housing =
       kind === "admin" || kind === "readonly"
-        ? { properties: housingProperties, blocks: housingBlocks, rooms: housingRooms, beds: housingBeds, residents: housingResidents, bookings: housingBookings, inspections: housingInspections, assets: housingAssets, inventory: housingInventory, approvals: housingApprovals, notifications: housingNotifications, history: housingHistory }
+        ? { properties: housingProperties, blocks: housingBlocks, rooms: housingRooms, beds: housingBeds, residents: housingResidents, bookings: housingBookings, inspections: housingInspections, assets: housingAssets, inventory: housingInventory, approvals: housingApprovals, notifications: housingNotifications, notificationSettings: housingNotificationSettings, history: housingHistory }
         : {
             properties: housingProperties,
             blocks: housingBlocks,
@@ -137,6 +138,7 @@ export async function getOperatingData(user: OperatingUser = null) {
             inventory: housingInventory,
             approvals: housingApprovals,
             notifications: housingNotifications.filter((notification) => notification.recipient === user?.name || notification.recipient === user?.email || notification.recipient.includes("Supervisor")),
+            notificationSettings: housingNotificationSettings,
             history: housingHistory,
           };
 
