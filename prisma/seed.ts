@@ -5,6 +5,18 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function resetOperationalData() {
+  await prisma.housingHistory.deleteMany({});
+  await prisma.housingNotification.deleteMany({});
+  await prisma.housingApproval.deleteMany({});
+  await prisma.housingInventory.deleteMany({});
+  await prisma.housingAsset.deleteMany({});
+  await prisma.housingInspection.deleteMany({});
+  await prisma.housingBooking.deleteMany({});
+  await prisma.housingResident.deleteMany({});
+  await prisma.housingBed.deleteMany({});
+  await prisma.housingRoom.deleteMany({});
+  await prisma.housingBlock.deleteMany({});
+  await prisma.housingProperty.deleteMany({});
   await prisma.inventoryIssue.deleteMany({});
   await prisma.meter.deleteMany({});
   await prisma.iotAlert.deleteMany({});
@@ -86,6 +98,9 @@ async function main() {
     ["work.view", "View Work Orders", "Work", "View work order panels and completion history"],
     ["reception.manage", "Reception Desk", "Reception", "Create resident requests and view front-desk queue"],
     ["resident.portal", "Resident Portal", "Resident", "Create and track own requests"],
+    ["housing.manage", "Manage Housing Operations", "Housing", "Create and manage accommodation, bookings, inspections, assets and inventory"],
+    ["housing.approve", "Approve Housing Requests", "Housing", "Approve or reject housing bookings and escalations"],
+    ["housing.view", "View Housing", "Housing", "View housing dashboards, room history, reports and alerts"],
   ] as const;
 
   for (const [code, name, module, description] of permissions) {
@@ -102,15 +117,15 @@ async function main() {
   }
 
   const defaultRolePermissions: Record<string, string[]> = {
-    Supervisor: ["work.manage", "work.assign", "work.verify", "work.execute", "requests.manage", "requests.approve", "requests.view", "reports.view"],
-    "Department Supervisor": ["work.manage", "work.assign", "work.verify", "work.execute", "requests.manage", "requests.approve", "requests.view", "ppm.manage", "reports.view"],
-    "Service Team": ["work.execute", "requests.view"],
+    Supervisor: ["work.manage", "work.assign", "work.verify", "work.execute", "requests.manage", "requests.approve", "requests.view", "housing.manage", "housing.approve", "housing.view", "reports.view"],
+    "Department Supervisor": ["work.manage", "work.assign", "work.verify", "work.execute", "requests.manage", "requests.approve", "requests.view", "ppm.manage", "housing.manage", "housing.approve", "housing.view", "reports.view"],
+    "Service Team": ["work.execute", "requests.view", "housing.view"],
     Technician: ["work.execute", "requests.view"],
-    Helpdesk: ["requests.manage", "requests.approve", "requests.view", "reports.view"],
-    Reception: ["reception.manage", "requests.manage", "requests.view"],
-    Resident: ["resident.portal", "requests.view"],
+    Helpdesk: ["requests.manage", "requests.approve", "requests.view", "housing.view", "reports.view"],
+    Reception: ["reception.manage", "requests.manage", "requests.view", "housing.manage", "housing.view"],
+    Resident: ["resident.portal", "requests.view", "housing.view"],
     Requester: ["resident.portal", "requests.view"],
-    "Read-only": ["assets.view", "work.view", "requests.view", "reports.view"],
+    "Read-only": ["assets.view", "work.view", "requests.view", "reports.view", "housing.view"],
   };
 
   for (const [role, codes] of Object.entries(defaultRolePermissions)) {
@@ -669,6 +684,152 @@ async function main() {
       }),
     ),
   );
+
+  const housingProperty = await prisma.housingProperty.upsert({
+    where: { code: "HSP-001" },
+    update: {},
+    create: {
+      code: "HSP-001",
+      name: "Tamimi Global Housing Village",
+      site: "Jazan Operations Camp",
+      city: "Jazan",
+      manager: "Housing Supervisor",
+      totalRooms: 6,
+    },
+  });
+  const housingBlock = await prisma.housingBlock.upsert({
+    where: { code: "HSB-A" },
+    update: {},
+    create: { code: "HSB-A", name: "Block A", propertyId: housingProperty.id, floors: 3 },
+  });
+
+  const housingRooms = [] as Awaited<ReturnType<typeof prisma.housingRoom.upsert>>[];
+  for (const [code, roomNumber, floor, roomType, capacity, occupancy, status] of [
+    ["HSR-A101", "A101", "1", "Single Executive", 1, 1, "OCCUPIED"],
+    ["HSR-A102", "A102", "1", "Shared Technician", 2, 1, "RESERVED"],
+    ["HSR-A201", "A201", "2", "Shared Technician", 2, 0, "AVAILABLE"],
+    ["HSR-A202", "A202", "2", "Isolation / Maintenance", 1, 0, "MAINTENANCE"],
+  ] as const) {
+    const room = await prisma.housingRoom.upsert({
+      where: { code },
+      update: {},
+      create: {
+        code,
+        roomNumber,
+        propertyId: housingProperty.id,
+        blockId: housingBlock.id,
+        floor,
+        roomType,
+        capacity,
+        occupancy,
+        status,
+        qrCode: `QR:${code}`,
+        remarks: `${roomType} room for CAFM housing operation testing.`,
+      },
+    });
+    housingRooms.push(room);
+    for (let index = 1; index <= capacity; index += 1) {
+      await prisma.housingBed.upsert({
+        where: { code: `${code}-B${index}` },
+        update: {},
+        create: {
+          code: `${code}-B${index}`,
+          label: `Bed ${index}`,
+          roomId: room.id,
+          status: index <= occupancy ? (status === "OCCUPIED" ? "OCCUPIED" : "RESERVED") : "AVAILABLE",
+          occupant: index <= occupancy ? (index === 1 ? "Hamayun Ali" : "Resident") : "",
+        },
+      });
+    }
+  }
+
+  const resident = await prisma.housingResident.upsert({
+    where: { residentNo: "RES-00001" },
+    update: {},
+    create: {
+      residentNo: "RES-00001",
+      name: "Hamayun Ali",
+      email: "hamayun.resident@tamimiglobal.local",
+      phone: "+966 500000101",
+      companyId: "TG-EMP-001",
+      nationality: "Pakistan",
+      departmentCode: "MEP",
+    },
+  });
+  const bed = await prisma.housingBed.findFirst({ where: { roomId: housingRooms[0].id } });
+  const booking = await prisma.housingBooking.upsert({
+    where: { bookingNo: "HBK-00001" },
+    update: {},
+    create: {
+      bookingNo: "HBK-00001",
+      residentId: resident.id,
+      residentName: resident.name,
+      departmentCode: "MEP",
+      roomId: housingRooms[0].id,
+      bedId: bed?.id,
+      checkIn: subDays(new Date(), 2),
+      status: "CHECKED_IN",
+      priority: "MEDIUM",
+      requestedBy: "Reception",
+      approvedBy: "Housing Supervisor",
+      approvalLevel: "Supervisor",
+      notes: "Seed booking for end-to-end housing workflow verification.",
+    },
+  });
+  await prisma.housingApproval.create({
+    data: { entity: "booking", entityId: booking.id, bookingId: booking.id, level: "Supervisor", approver: "Housing Supervisor", status: "APPROVED", remarks: "Approved sample booking." },
+  });
+  await prisma.housingNotification.create({
+    data: { title: "Housing inspection due", message: "Room A102 check-in inspection is due today.", severity: "MEDIUM", recipient: "Housing Supervisor", bookingId: booking.id },
+  });
+  await prisma.housingInspection.upsert({
+    where: { inspectionNo: "HIN-00001" },
+    update: {},
+    create: {
+      inspectionNo: "HIN-00001",
+      roomId: housingRooms[1].id,
+      inspector: "Housing Supervisor",
+      inspectionType: "Check-in Readiness",
+      status: "SCHEDULED",
+      score: 92,
+      findings: "Verify linen, HVAC thermostat and washroom fittings before occupancy.",
+      dueAt: addDays(new Date(), 1),
+    },
+  });
+  await prisma.housingAsset.upsert({
+    where: { tag: "HSA-BED-A101" },
+    update: {},
+    create: {
+      tag: "HSA-BED-A101",
+      name: "Executive Bed Frame",
+      category: "Furniture",
+      roomId: housingRooms[0].id,
+      status: "ACTIVE",
+      serialNumber: "BED-A101-01",
+      warrantyExpiry: addDays(new Date(), 365),
+      qrCode: "QR:HSA-BED-A101",
+    },
+  });
+  await prisma.housingInventory.upsert({
+    where: { sku: "HSI-LINEN-SET" },
+    update: {},
+    create: {
+      sku: "HSI-LINEN-SET",
+      name: "Linen Set",
+      category: "Housekeeping",
+      roomId: housingRooms[0].id,
+      onHand: 48,
+      reorderPoint: 20,
+      unit: "Set",
+      qrCode: "QR:HSI-LINEN-SET",
+    },
+  });
+  await prisma.housingHistory.createMany({
+    data: [
+      { entity: "room", entityId: housingRooms[0].id, roomId: housingRooms[0].id, action: "Room seeded", actor: "System", details: "Initial room occupancy loaded." },
+      { entity: "booking", entityId: booking.id, bookingId: booking.id, roomId: housingRooms[0].id, action: "Booking checked in", actor: "Housing Supervisor", details: "Resident checked in and bed allocation confirmed." },
+    ],
+  });
 }
 
 function addHoursSafe(hours: number) {

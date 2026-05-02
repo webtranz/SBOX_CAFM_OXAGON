@@ -64,6 +64,20 @@ type ConsoleData = {
   jobPlans: any[];
   roles: any[];
   auditLogs: any[];
+  housing: {
+    properties: any[];
+    blocks: any[];
+    rooms: any[];
+    beds: any[];
+    residents: any[];
+    bookings: any[];
+    inspections: any[];
+    assets: any[];
+    inventory: any[];
+    approvals: any[];
+    notifications: any[];
+    history: any[];
+  };
 };
 
 type ActionPermissions = {
@@ -97,6 +111,19 @@ const moduleGroups = [
       { id: "command", label: "Facility Report", icon: Gauge, view: "facility-report" },
       { id: "locations", label: "Locations", icon: MapPinned, view: "locations" },
       { id: "reports", label: "Bookings Report", icon: ClipboardCheck, view: "bookings-report" },
+    ],
+  },
+  {
+    label: "Housing Operations",
+    icon: Building2,
+    items: [
+      { id: "housing", label: "Housing Dashboard", icon: LayoutDashboard, view: "housing-dashboard" },
+      { id: "housing", label: "Accommodation & Bookings", icon: CalendarCheck, view: "housing-bookings" },
+      { id: "housing", label: "Room Inspections", icon: ClipboardCheck, view: "housing-inspections" },
+      { id: "housing", label: "Housing Assets", icon: Building2, view: "housing-assets" },
+      { id: "housing", label: "Housing Inventory", icon: Boxes, view: "housing-inventory" },
+      { id: "housing", label: "Approvals & Alerts", icon: ShieldCheck, view: "housing-approvals" },
+      { id: "housing", label: "Housing Reports", icon: Gauge, view: "housing-reports" },
     ],
   },
   {
@@ -173,6 +200,7 @@ const moduleGroups = [
 
 const healthColors = ["#35a852", "#0f8b8d", "#ffd166", "#f45d48"];
 const PAGE_SIZE = 100;
+const HOUSING_FIELD_CLASS = "h-11 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon";
 const modulePermissions: Record<string, string> = {
   assets: "assets.manage",
   work: "work.execute",
@@ -190,6 +218,7 @@ const modulePermissions: Record<string, string> = {
   iot: "reports.view",
   hr: "users.manage",
   audit: "reports.view",
+  housing: "housing.view",
 };
 const statToneClasses: Record<string, string> = {
   coral: "text-coral",
@@ -334,7 +363,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
     return new Set(records.rolePermissions.filter((item) => item.role === user.role).map((item) => item.permission.code));
   }, [records.rolePermissions, user.role]);
   const isReadOnlyUser = roleKindLabel(user.role) === "readonly";
-  const readOnlyModules = new Set(["command", "dashboard", "assets", "work", "ppm", "requests", "reports"]);
+  const readOnlyModules = new Set(["command", "dashboard", "assets", "work", "ppm", "requests", "reports", "housing"]);
   const can = (permission?: string) => user.role === "Admin" || !permission || (!isReadOnlyUser && permissionCodes.has(permission));
   const canOpenModule = (moduleId: string) => (isReadOnlyUser && readOnlyModules.has(moduleId)) || can(modulePermissions[moduleId]);
   const canViewActive = canOpenModule(active);
@@ -688,6 +717,18 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
           {canViewActive && active === "reports" && <Reports />}
           {canViewActive && active === "audit" && <AuditLogs logs={records.auditLogs ?? []} />}
           {canViewActive && active === "hr" && <HumanResources employees={records.employees} departments={records.departments} saving={saving} submitEmployee={(formData) => postRecord("/api/employees", formData, "Employee")} />}
+          {canViewActive && active === "housing" && (
+            <HousingOperations
+              housing={records.housing}
+              view={activeView}
+              saving={saving}
+              canManage={can("housing.manage")}
+              canApprove={can("housing.approve")}
+              submitHousing={(formData) => postRecord("/api/housing", formData, "Housing record")}
+              updateHousing={(type, id, body) => patchRecord(`/api/housing/${type}/${id}`, body, "Housing record updated.")}
+              deleteHousing={(type, id) => deleteRecord(`/api/housing/${type}/${id}`, "Housing record deleted.")}
+            />
+          )}
         </section>
       </section>
     </main>
@@ -4137,6 +4178,376 @@ function HumanResources({ employees, departments, submitEmployee, saving }: { em
   );
 }
 
+function HousingOperations({
+  housing,
+  view,
+  saving,
+  canManage,
+  canApprove,
+  submitHousing,
+  updateHousing,
+  deleteHousing,
+}: {
+  housing: ConsoleData["housing"];
+  view: string;
+  saving: boolean;
+  canManage: boolean;
+  canApprove: boolean;
+  submitHousing: (formData: FormData) => void;
+  updateHousing: (type: string, id: string, body: Record<string, unknown>) => Promise<void> | void;
+  deleteHousing: (type: string, id: string) => Promise<void> | void;
+}) {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("All");
+  const [selected, setSelected] = useState<{ type: string; record: any } | null>(null);
+  const rooms = housing?.rooms ?? [];
+  const bookings = housing?.bookings ?? [];
+  const inspections = housing?.inspections ?? [];
+  const assets = housing?.assets ?? [];
+  const inventory = housing?.inventory ?? [];
+  const approvals = housing?.approvals ?? [];
+  const notifications = housing?.notifications ?? [];
+  const history = housing?.history ?? [];
+  const occupancy = rooms.reduce((sum, room) => sum + Number(room.occupancy || 0), 0);
+  const capacity = rooms.reduce((sum, room) => sum + Number(room.capacity || 0), 0);
+  const openApprovals = approvals.filter((approval) => approval.status === "PENDING").length;
+  const overdueInspections = inspections.filter((inspection) => new Date(inspection.dueAt).getTime() < Date.now() && !["PASSED", "CLOSED"].includes(inspection.status)).length;
+  const filterText = search.toLowerCase();
+  const visibleBookings = bookings.filter((booking) => {
+    const haystack = `${booking.bookingNo} ${booking.residentName} ${booking.departmentCode} ${booking.status} ${booking.room?.roomNumber} ${booking.bed?.label}`.toLowerCase();
+    return (!search || haystack.includes(filterText)) && (status === "All" || booking.status === status);
+  });
+  const visibleRooms = rooms.filter((room) => {
+    const haystack = `${room.code} ${room.roomNumber} ${room.property?.name} ${room.block?.name} ${room.floor} ${room.roomType} ${room.status}`.toLowerCase();
+    return !search || haystack.includes(filterText);
+  });
+  const activePanel =
+    view === "housing-bookings" ? "bookings" :
+    view === "housing-inspections" ? "inspections" :
+    view === "housing-assets" ? "assets" :
+    view === "housing-inventory" ? "inventory" :
+    view === "housing-approvals" ? "approvals" :
+    view === "housing-reports" ? "reports" : "dashboard";
+
+  return (
+    <section className="grid gap-5">
+      <Panel title="Housing Operations Command" icon={Building2}>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <HousingKpi label="Occupancy" value={`${occupancy}/${capacity}`} detail={`${capacity ? Math.round((occupancy / capacity) * 100) : 0}% occupied`} />
+          <HousingKpi label="Available Rooms" value={String(rooms.filter((room) => room.status === "AVAILABLE").length)} detail="ready for allocation" />
+          <HousingKpi label="Pending Approvals" value={String(openApprovals)} detail="requires supervisor action" />
+          <HousingKpi label="Inspection Alerts" value={String(overdueInspections)} detail="overdue or open findings" />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="flex min-w-[260px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
+            <Search size={16} className="text-slate-400" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search housing rooms, residents, bookings" className="h-11 w-full text-sm outline-none" />
+          </div>
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold">
+            <option>All</option>
+            <option>REQUESTED</option>
+            <option>PENDING_APPROVAL</option>
+            <option>APPROVED</option>
+            <option>CHECKED_IN</option>
+            <option>CHECKED_OUT</option>
+            <option>REJECTED</option>
+          </select>
+          <ReportButtons type="housing-bookings" label="Housing bookings report" />
+        </div>
+      </Panel>
+
+      {activePanel === "dashboard" && (
+        <section className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+          <HousingTable
+            title="Accommodation & Occupancy"
+            rows={visibleRooms}
+            columns={[["code", "Code"], ["roomNumber", "Room"], ["roomType", "Type"], ["floor", "Floor"], ["occupancy", "Occ"], ["capacity", "Cap"], ["status", "Status"], ["qrCode", "QR"]]}
+            onSelect={(record) => setSelected({ type: "room", record })}
+            reportType="housing-rooms"
+          />
+          <HousingAlerts notifications={notifications} approvals={approvals} onApprove={(id, nextStatus) => updateHousing("approval", id, { status: nextStatus })} canApprove={canApprove} />
+        </section>
+      )}
+
+      {activePanel === "bookings" && (
+        <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+          <HousingTable
+            title="Accommodation & Booking Management"
+            rows={visibleBookings}
+            columns={[["bookingNo", "Booking"], ["residentName", "Resident"], ["departmentCode", "Dept"], ["status", "Status"], ["priority", "Priority"], ["requestedBy", "Requested By"]]}
+            onSelect={(record) => setSelected({ type: "booking", record })}
+            reportType="housing-bookings"
+            actions={(record) => canApprove && (
+              <div className="flex gap-2">
+                <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("booking", record.id, { status: "APPROVED", approvedBy: "Housing Supervisor" }); }} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Approve</button>
+                <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("booking", record.id, { status: "REJECTED", notes: "Rejected by supervisor" }); }} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white">Reject</button>
+              </div>
+            )}
+          />
+          {canManage && <HousingBookingForm rooms={rooms} residents={housing.residents ?? []} saving={saving} onSubmit={submitHousing} />}
+        </section>
+      )}
+
+      {activePanel === "inspections" && (
+        <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+          <HousingTable
+            title="Room Inspection Management"
+            rows={inspections}
+            columns={[["inspectionNo", "Inspection"], ["inspectionType", "Type"], ["inspector", "Inspector"], ["status", "Status"], ["score", "Score"], ["dueAt", "Due"]]}
+            onSelect={(record) => setSelected({ type: "inspection", record })}
+            reportType="housing-inspections"
+            actions={(record) => canManage && <button type="button" onClick={(event) => { event.stopPropagation(); updateHousing("inspection", record.id, { status: "CLOSED", completedAt: new Date().toISOString() }); }} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Close</button>}
+          />
+          {canManage && <HousingInspectionForm rooms={rooms} saving={saving} onSubmit={submitHousing} />}
+        </section>
+      )}
+
+      {activePanel === "assets" && (
+        <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+          <HousingTable title="Housing Asset Management" rows={assets} columns={[["tag", "Tag"], ["name", "Name"], ["category", "Category"], ["status", "Status"], ["serialNumber", "Serial"], ["qrCode", "QR"]]} onSelect={(record) => setSelected({ type: "asset", record })} reportType="housing-assets" />
+          {canManage && <HousingAssetForm rooms={rooms} saving={saving} onSubmit={submitHousing} />}
+        </section>
+      )}
+
+      {activePanel === "inventory" && (
+        <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+          <HousingTable title="Housing Inventory Management" rows={inventory} columns={[["sku", "SKU"], ["name", "Name"], ["category", "Category"], ["onHand", "On Hand"], ["reorderPoint", "Reorder"], ["unit", "Unit"], ["qrCode", "QR"]]} onSelect={(record) => setSelected({ type: "inventory", record })} reportType="housing-inventory" />
+          {canManage && <HousingInventoryForm rooms={rooms} saving={saving} onSubmit={submitHousing} />}
+        </section>
+      )}
+
+      {activePanel === "approvals" && (
+        <section className="grid gap-5 xl:grid-cols-2">
+          <HousingAlerts notifications={notifications} approvals={approvals} onApprove={(id, nextStatus) => updateHousing("approval", id, { status: nextStatus })} canApprove={canApprove} />
+          <HousingTable title="Housing History & Audit Trail" rows={history} columns={[["entity", "Entity"], ["action", "Action"], ["actor", "Actor"], ["details", "Details"], ["createdAt", "Time"]]} reportType="housing-history" />
+        </section>
+      )}
+
+      {activePanel === "reports" && (
+        <Panel title="Housing Reports" icon={Gauge}>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["housing-rooms", "Rooms & Occupancy"],
+              ["housing-bookings", "Bookings"],
+              ["housing-inspections", "Inspections"],
+              ["housing-assets", "Housing Assets"],
+              ["housing-inventory", "Housing Inventory"],
+              ["housing-approvals", "Approval Workflow"],
+              ["housing-notifications", "Notifications"],
+              ["housing-history", "History"],
+            ].map(([type, label]) => <ReportButtons key={type} type={type} label={label} />)}
+          </div>
+        </Panel>
+      )}
+
+      {selected && (
+        <HousingPreviewModal
+          type={selected.type}
+          record={selected.record}
+          history={history.filter((item) => item.entityId === selected.record.id || item.roomId === selected.record.id || item.bookingId === selected.record.id)}
+          canManage={canManage}
+          onClose={() => setSelected(null)}
+          onDelete={() => {
+            deleteHousing(selected.type, selected.record.id);
+            setSelected(null);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function HousingKpi({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+      <p className="text-sm font-bold text-slate-500">{label}</p>
+      <p className="mt-2 text-3xl font-black">{value}</p>
+      <p className="mt-1 text-sm font-bold text-lagoon">{detail}</p>
+    </div>
+  );
+}
+
+function HousingTable({ title, rows, columns, onSelect, actions, reportType }: { title: string; rows: any[]; columns: [string, string][]; onSelect?: (record: any) => void; actions?: (record: any) => any; reportType: string }) {
+  return (
+    <Panel title={title} icon={Building2}>
+      <ReportButtons type={reportType} label={`${title} report`} />
+      <div className="mt-4 overflow-auto rounded-lg border border-slate-200">
+        <table className="min-w-[900px] bg-white text-sm">
+          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-3">#</th>
+              {columns.map(([, label]) => <th key={label} className="px-3 py-3">{label}</th>)}
+              {actions && <th className="px-3 py-3">Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.id ?? index} onClick={() => onSelect?.(row)} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50">
+                <td className="px-3 py-3 font-black text-slate-500">{index + 1}</td>
+                {columns.map(([key]) => <td key={key} className="max-w-[260px] px-3 py-3"><CellValue value={key.includes("At") || key === "dueAt" || key === "checkIn" ? formatDateCell(row[key]) : row[key]} /></td>)}
+                {actions && <td className="px-3 py-3">{actions(row)}</td>}
+              </tr>
+            ))}
+            {!rows.length && <tr><td colSpan={columns.length + 2} className="px-3 py-6 text-center font-bold text-slate-500">No housing records found.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function HousingAlerts({ notifications, approvals, onApprove, canApprove }: { notifications: any[]; approvals: any[]; onApprove: (id: string, status: string) => void; canApprove: boolean }) {
+  return (
+    <Panel title="Approval Workflow, Notifications & Alerts" icon={AlertTriangle}>
+      <div className="grid gap-3">
+        {approvals.slice(0, 6).map((approval) => (
+          <div key={approval.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-black">{approval.level} approval</p>
+                <p className="text-sm font-bold text-slate-500">{approval.entity} / {approval.status}</p>
+              </div>
+              {canApprove && approval.status === "PENDING" && (
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => onApprove(approval.id, "APPROVED")} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Approve</button>
+                  <button type="button" onClick={() => onApprove(approval.id, "REJECTED")} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white">Reject</button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {notifications.slice(0, 6).map((notification) => (
+          <div key={notification.id} className="rounded-lg bg-amber-50 p-3 text-sm">
+            <p className="font-black text-amber-800">{notification.title}</p>
+            <p className="mt-1 font-bold text-amber-900/80">{notification.message}</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function HousingBookingForm({ rooms, residents, saving, onSubmit }: { rooms: any[]; residents: any[]; saving: boolean; onSubmit: (formData: FormData) => void }) {
+  return (
+    <HousingForm title="Create Booking" type="booking" saving={saving} onSubmit={onSubmit}>
+      <select name="residentId" className={HOUSING_FIELD_CLASS}>
+        <option value="">Select resident</option>
+        {residents.map((resident) => <option key={resident.id} value={resident.id}>{resident.residentNo} - {resident.name}</option>)}
+      </select>
+      <input name="residentName" placeholder="Resident name" className={HOUSING_FIELD_CLASS} />
+      <input name="departmentCode" placeholder="Department code" className={HOUSING_FIELD_CLASS} />
+      <select name="roomId" className={HOUSING_FIELD_CLASS}>
+        <option value="">Select room</option>
+        {rooms.map((room) => <option key={room.id} value={room.id}>{room.property?.name} / {room.block?.name} / {room.roomNumber} ({room.occupancy}/{room.capacity})</option>)}
+      </select>
+      <input name="checkIn" type="datetime-local" className={HOUSING_FIELD_CLASS} />
+      <select name="priority" className={HOUSING_FIELD_CLASS}><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select>
+      <ImageUploadField name="attachmentUrls" />
+      <textarea name="notes" placeholder="Booking notes / approval justification" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+    </HousingForm>
+  );
+}
+
+function HousingInspectionForm({ rooms, saving, onSubmit }: { rooms: any[]; saving: boolean; onSubmit: (formData: FormData) => void }) {
+  return (
+    <HousingForm title="Create Room Inspection" type="inspection" saving={saving} onSubmit={onSubmit}>
+      <select name="roomId" className={HOUSING_FIELD_CLASS}><option value="">Select room</option>{rooms.map((room) => <option key={room.id} value={room.id}>{room.roomNumber} / {room.roomType}</option>)}</select>
+      <input name="inspectionType" placeholder="Inspection type" className={HOUSING_FIELD_CLASS} />
+      <input name="inspector" placeholder="Inspector" className={HOUSING_FIELD_CLASS} />
+      <input name="dueAt" type="datetime-local" className={HOUSING_FIELD_CLASS} />
+      <input name="score" type="number" placeholder="Score" className={HOUSING_FIELD_CLASS} />
+      <ImageUploadField name="photoUrls" />
+      <textarea name="findings" placeholder="Findings and corrective actions" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+    </HousingForm>
+  );
+}
+
+function HousingAssetForm({ rooms, saving, onSubmit }: { rooms: any[]; saving: boolean; onSubmit: (formData: FormData) => void }) {
+  return (
+    <HousingForm title="Add Housing Asset" type="asset" saving={saving} onSubmit={onSubmit}>
+      <input name="tag" placeholder="Asset tag / barcode" className={HOUSING_FIELD_CLASS} />
+      <input name="name" placeholder="Asset name" className={HOUSING_FIELD_CLASS} />
+      <input name="category" placeholder="Category" className={HOUSING_FIELD_CLASS} />
+      <select name="roomId" className={HOUSING_FIELD_CLASS}><option value="">Assign room</option>{rooms.map((room) => <option key={room.id} value={room.id}>{room.roomNumber} / {room.roomType}</option>)}</select>
+      <input name="serialNumber" placeholder="Serial number" className={HOUSING_FIELD_CLASS} />
+      <input name="warrantyExpiry" type="date" className={HOUSING_FIELD_CLASS} />
+      <ImageUploadField name="photoUrls" />
+    </HousingForm>
+  );
+}
+
+function HousingInventoryForm({ rooms, saving, onSubmit }: { rooms: any[]; saving: boolean; onSubmit: (formData: FormData) => void }) {
+  return (
+    <HousingForm title="Add Housing Inventory" type="inventory" saving={saving} onSubmit={onSubmit}>
+      <input name="sku" placeholder="SKU / barcode" className={HOUSING_FIELD_CLASS} />
+      <input name="name" placeholder="Item name" className={HOUSING_FIELD_CLASS} />
+      <input name="category" placeholder="Category" className={HOUSING_FIELD_CLASS} />
+      <select name="roomId" className={HOUSING_FIELD_CLASS}><option value="">Room / store location</option>{rooms.map((room) => <option key={room.id} value={room.id}>{room.roomNumber} / {room.roomType}</option>)}</select>
+      <input name="onHand" type="number" placeholder="On hand" className={HOUSING_FIELD_CLASS} />
+      <input name="reorderPoint" type="number" placeholder="Reorder point" className={HOUSING_FIELD_CLASS} />
+      <input name="unit" placeholder="Unit" className={HOUSING_FIELD_CLASS} />
+    </HousingForm>
+  );
+}
+
+function HousingForm({ title, type, saving, onSubmit, children }: { title: string; type: string; saving: boolean; onSubmit: (formData: FormData) => void; children: any }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    form.reset();
+  }
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <input type="hidden" name="type" value={type} />
+      <h3 className="text-xl font-black">{title}</h3>
+      <p className="mt-1 text-sm font-bold text-slate-500">Fields are flexible; fill what is available and the system completes IDs/status.</p>
+      <div className="mt-4 grid gap-3">
+        {children}
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save"}</button>
+      </div>
+    </form>
+  );
+}
+
+function HousingPreviewModal({ type, record, history, canManage, onClose, onDelete }: { type: string; record: any; history: any[]; canManage: boolean; onClose: () => void; onDelete: () => void }) {
+  const attachments = attachmentList(record.photoUrls || record.attachmentUrls);
+  const images = attachments.filter(isImageUrl);
+  return (
+    <RequestModalShell title={`Housing ${type}: ${record.bookingNo || record.inspectionNo || record.code || record.tag || record.sku || record.name}`} onClose={onClose}>
+      <div className="grid gap-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          {Object.entries(record).filter(([key]) => !["property", "block", "room", "bed", "resident", "approvals", "beds"].includes(key)).slice(0, 18).map(([key, value]) => (
+            <PreviewField key={key} label={key.replace(/([A-Z])/g, " $1")} value={key.includes("At") || key.includes("check") || key === "dueAt" ? formatDateCell(value as string) : displayValue(value)} />
+          ))}
+        </div>
+        {record.room && <PreviewField label="Room" value={`${record.room.property?.name || ""} / ${record.room.block?.name || ""} / ${record.room.roomNumber || ""}`} />}
+        {images.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <p className="text-sm font-black">Photo Evidence</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+              {images.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt="Housing attachment" className="h-28 w-full rounded-lg object-cover" /></a>)}
+            </div>
+          </div>
+        )}
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-sm font-black">History Tracking</p>
+          <div className="mt-3 grid gap-2">
+            {history.length ? history.map((item) => (
+              <div key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+                <p className="font-black text-lagoon">{item.action}</p>
+                <p className="font-bold text-slate-600">{item.actor} / {formatDateCell(item.createdAt)}</p>
+                <p className="text-slate-600">{item.details}</p>
+              </div>
+            )) : <p className="rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-500">No history entries yet.</p>}
+          </div>
+        </div>
+        {canManage && <button type="button" onClick={onDelete} className="h-11 rounded-lg bg-coral font-black text-white">Delete {type}</button>}
+      </div>
+    </RequestModalShell>
+  );
+}
+
 function Reports() {
   const [type, setType] = useState("assets");
   const [rows, setRows] = useState<any[]>([]);
@@ -4187,6 +4598,13 @@ function Reports() {
             <option value="requests">Service Requests</option>
             <option value="inventory">Inventory</option>
             <option value="ppm">PPM</option>
+            <option value="housing-rooms">Housing Rooms</option>
+            <option value="housing-bookings">Housing Bookings</option>
+            <option value="housing-inspections">Housing Inspections</option>
+            <option value="housing-assets">Housing Assets</option>
+            <option value="housing-inventory">Housing Inventory</option>
+            <option value="housing-approvals">Housing Approvals</option>
+            <option value="housing-history">Housing History</option>
           </select>
           <a className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white" href={exportUrl("csv")}>CSV</a>
           <a className="rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" href={exportUrl("excel")}>Excel</a>

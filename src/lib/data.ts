@@ -59,7 +59,7 @@ export async function getOperatingData(user: OperatingUser = null) {
     const visibleJobPlanWhere = kind === "admin" || kind === "readonly" ? {} : kind === "supervisor" || kind === "technician" ? { departmentCode: { in: departmentsForUser } } : {};
     const visibleUsersWhere = kind === "admin" ? {} : { OR: [{ department: { in: departmentsForUser } }, { id: user?.id || "" }] };
 
-    const [sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, roles, auditLogs] = await Promise.all([
+    const [sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, roles, auditLogs, housingProperties, housingBlocks, housingRooms, housingBeds, housingResidents, housingBookings, housingInspections, housingAssets, housingInventory, housingApprovals, housingNotifications, housingHistory] = await Promise.all([
       prisma.site.findMany({ orderBy: { name: "asc" } }),
       prisma.asset.findMany({
         where: visibleAssetWhere,
@@ -102,12 +102,45 @@ export async function getOperatingData(user: OperatingUser = null) {
       prisma.jobPlan.findMany({ where: visibleJobPlanWhere, orderBy: { code: "asc" } }),
       prisma.role.findMany({ orderBy: { name: "asc" } }),
       prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
+      prisma.housingProperty.findMany({ orderBy: { name: "asc" } }),
+      prisma.housingBlock.findMany({ include: { property: true }, orderBy: { code: "asc" } }),
+      prisma.housingRoom.findMany({ include: { property: true, block: true, beds: true }, orderBy: [{ roomNumber: "asc" }] }),
+      prisma.housingBed.findMany({ include: { room: true }, orderBy: { code: "asc" } }),
+      prisma.housingResident.findMany({ orderBy: { name: "asc" } }),
+      prisma.housingBooking.findMany({
+        include: { room: { include: { property: true, block: true } }, bed: true, resident: true, approvals: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.housingInspection.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { dueAt: "asc" } }),
+      prisma.housingAsset.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { tag: "asc" } }),
+      prisma.housingInventory.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { sku: "asc" } }),
+      prisma.housingApproval.findMany({ orderBy: { createdAt: "desc" } }),
+      prisma.housingNotification.findMany({ orderBy: { createdAt: "desc" }, take: 100 }),
+      prisma.housingHistory.findMany({ orderBy: { createdAt: "desc" }, take: 300 }),
     ]);
 
     const visibleAssetTags = new Set(assets.map((asset) => asset.tag));
     const scopedPpms = kind === "admin" ? ppms : ppms.filter((ppm) => visibleAssetTags.has(ppm.assetTag));
 
-    return { sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms: scopedPpms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, roles, auditLogs, live: true };
+    const housing =
+      kind === "admin" || kind === "readonly"
+        ? { properties: housingProperties, blocks: housingBlocks, rooms: housingRooms, beds: housingBeds, residents: housingResidents, bookings: housingBookings, inspections: housingInspections, assets: housingAssets, inventory: housingInventory, approvals: housingApprovals, notifications: housingNotifications, history: housingHistory }
+        : {
+            properties: housingProperties,
+            blocks: housingBlocks,
+            rooms: housingRooms,
+            beds: housingBeds,
+            residents: housingResidents.filter((resident) => !resident.departmentCode || departmentsForUser.includes(resident.departmentCode)),
+            bookings: housingBookings.filter((booking) => !booking.departmentCode || departmentsForUser.includes(booking.departmentCode) || booking.requestedBy === user?.name || booking.requestedBy === user?.email),
+            inspections: housingInspections,
+            assets: housingAssets,
+            inventory: housingInventory,
+            approvals: housingApprovals,
+            notifications: housingNotifications.filter((notification) => notification.recipient === user?.name || notification.recipient === user?.email || notification.recipient.includes("Supervisor")),
+            history: housingHistory,
+          };
+
+    return { sites, assets, requests, workOrders, inventory, inspections, alerts, teams, services, categories, ppms: scopedPpms, users, permissions, departments, employees, rolePermissions, locations, jobPlans, roles, auditLogs, housing, live: true };
   } catch {
     return { ...fallbackData, live: false };
   }

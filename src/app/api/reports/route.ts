@@ -130,6 +130,38 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
     const rows = await prisma.iotAlert.findMany({ orderBy: { detectedAt: "desc" } });
     return rows.map((row) => ({ source: row.source, assetTag: row.assetTag, severity: row.severity, message: row.message, status: row.status, detectedAt: dateValue(row.detectedAt) }));
   }
+  if (type === "housing-rooms") {
+    const rows = await prisma.housingRoom.findMany({ include: { property: true, block: true, beds: true }, orderBy: { roomNumber: "asc" } });
+    return rows.map((row) => ({ code: row.code, property: row.property.name, block: row.block?.name ?? "", floor: row.floor, roomNumber: row.roomNumber, roomType: row.roomType, capacity: row.capacity, occupancy: row.occupancy, status: row.status, qrCode: row.qrCode, remarks: row.remarks, createdAt: dateValue(row.createdAt) }));
+  }
+  if (type === "housing-bookings") {
+    const rows = await prisma.housingBooking.findMany({ include: { room: { include: { property: true, block: true } }, bed: true, resident: true }, orderBy: { createdAt: "desc" } });
+    return rows.map((row) => ({ bookingNo: row.bookingNo, resident: row.residentName, residentNo: row.resident?.residentNo ?? "", departmentCode: row.departmentCode, property: row.room.property.name, block: row.room.block?.name ?? "", room: row.room.roomNumber, bed: row.bed?.label ?? "", checkIn: dateValue(row.checkIn), checkOut: dateValue(row.checkOut), status: row.status, priority: row.priority, requestedBy: row.requestedBy, approvedBy: row.approvedBy, approvalLevel: row.approvalLevel, notes: row.notes }));
+  }
+  if (type === "housing-inspections") {
+    const rows = await prisma.housingInspection.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { dueAt: "asc" } });
+    return rows.map((row) => ({ inspectionNo: row.inspectionNo, property: row.room.property.name, block: row.room.block?.name ?? "", room: row.room.roomNumber, inspector: row.inspector, inspectionType: row.inspectionType, status: row.status, score: row.score, dueAt: dateValue(row.dueAt), completedAt: dateValue(row.completedAt), findings: row.findings }));
+  }
+  if (type === "housing-assets") {
+    const rows = await prisma.housingAsset.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { tag: "asc" } });
+    return rows.map((row) => ({ tag: row.tag, name: row.name, category: row.category, property: row.room?.property.name ?? "", block: row.room?.block?.name ?? "", room: row.room?.roomNumber ?? "", status: row.status, serialNumber: row.serialNumber, warrantyExpiry: dateValue(row.warrantyExpiry), qrCode: row.qrCode }));
+  }
+  if (type === "housing-inventory") {
+    const rows = await prisma.housingInventory.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { sku: "asc" } });
+    return rows.map((row) => ({ sku: row.sku, name: row.name, category: row.category, property: row.room?.property.name ?? "", block: row.room?.block?.name ?? "", room: row.room?.roomNumber ?? "", onHand: row.onHand, reorderPoint: row.reorderPoint, unit: row.unit, qrCode: row.qrCode }));
+  }
+  if (type === "housing-approvals") {
+    const rows = await prisma.housingApproval.findMany({ orderBy: { createdAt: "desc" } });
+    return rows.map((row) => ({ entity: row.entity, entityId: row.entityId, level: row.level, approver: row.approver, status: row.status, remarks: row.remarks, createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) }));
+  }
+  if (type === "housing-notifications") {
+    const rows = await prisma.housingNotification.findMany({ orderBy: { createdAt: "desc" } });
+    return rows.map((row) => ({ title: row.title, message: row.message, severity: row.severity, recipient: row.recipient, read: row.read, createdAt: dateValue(row.createdAt) }));
+  }
+  if (type === "housing-history") {
+    const rows = await prisma.housingHistory.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
+    return rows.map((row) => ({ entity: row.entity, entityId: row.entityId, action: row.action, actor: row.actor, details: row.details, createdAt: dateValue(row.createdAt) }));
+  }
   if (type === "audit-logs") {
     const rows = await prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
     return rows.map((row) => ({ time: dateValue(row.createdAt), actorName: row.actorName, role: row.role, action: row.action, entity: row.entity, entityId: row.entityId, details: row.details }));
