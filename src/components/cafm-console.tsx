@@ -4583,21 +4583,7 @@ function HousingOperations({
       )}
 
       {activePanel === "reports" && (
-        <Panel title="Housing Reports" icon={Gauge}>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["housing-rooms", "Rooms & Occupancy"],
-              ["housing-bookings", "Bookings"],
-              ["housing-inspections", "Inspections"],
-              ["housing-assets", "Housing Assets"],
-              ["housing-inventory", "Housing Inventory"],
-              ["housing-approvals", "Approval Workflow"],
-              ["housing-notifications", "Notifications"],
-              ["housing-notification-settings", "Notification Settings"],
-              ["housing-history", "History"],
-            ].map(([type, label]) => <ReportButtons key={type} type={type} label={label} />)}
-          </div>
-        </Panel>
+        <HousingReportsWorkspace rooms={rooms} bookings={bookings} />
       )}
 
       {selected && (
@@ -4723,6 +4709,98 @@ function HousingTable({ title, rows, columns, onSelect, actions, reportType }: {
         </div>
       </div>
     </Panel>
+  );
+}
+
+function HousingReportsWorkspace({ rooms, bookings }: { rooms: any[]; bookings: any[] }) {
+  const reportGroups = [
+    { group: "Occupancy Reports", reports: [["housing-occupancy-daily", "Daily occupancy report"], ["housing-occupancy-weekly", "Weekly occupancy report"], ["housing-occupancy-monthly", "Monthly occupancy report"], ["housing-company-occupancy", "Company-wise occupancy report"], ["housing-building-occupancy", "Building-wise occupancy report"], ["housing-bed-occupancy", "Bed-wise occupancy report"], ["housing-room-utilization", "Room utilization report"]] },
+    { group: "Asset Reports", reports: [["housing-missing-assets", "Missing asset report"], ["housing-damaged-assets", "Damaged asset report"], ["housing-asset-transfers", "Asset transfer report"], ["housing-asset-depreciation", "Asset depreciation report"], ["housing-asset-audit", "Asset audit report"]] },
+    { group: "Maintenance Reports", reports: [["housing-maintenance-open", "Open ticket report"], ["housing-maintenance-closed", "Closed ticket report"], ["housing-maintenance-delayed", "Delayed ticket report"], ["housing-preventive-maintenance", "Preventive maintenance report"], ["housing-technician-performance", "Technician performance report"]] },
+    { group: "Housekeeping Reports", reports: [["housing-cleaning-daily", "Daily cleaning report"], ["housing-deep-cleaning", "Deep cleaning report"], ["housing-inspection-report", "Inspection report"], ["housing-room-readiness", "Room readiness report"]] },
+  ];
+  const flatReports = reportGroups.flatMap((group) => group.reports.map(([type, label]) => ({ type, label, group: group.group })));
+  const [type, setType] = useState(flatReports[0].type);
+  const [rows, setRows] = useState<any[]>([]);
+  const [filters, setFilters] = useState({ dateFrom: "", dateTo: "", company: "", building: "", floor: "", room: "", status: "" });
+  const companies = Array.from(new Set(bookings.map((booking) => booking.companyName || booking.resident?.companyName || booking.departmentCode).filter(Boolean))).sort();
+  const buildings = Array.from(new Set(rooms.map((room) => room.block?.name || room.property?.name).filter(Boolean))).sort();
+  const floors = Array.from(new Set(rooms.map((room) => String(room.floor || "")).filter(Boolean))).sort();
+  const roomNumbers = Array.from(new Set(rooms.map((room) => String(room.roomNumber || "")).filter(Boolean))).sort();
+  const current = flatReports.find((report) => report.type === type) || flatReports[0];
+  const columns = rows[0] ? Object.keys(rows[0]).slice(0, 12).map((key) => [key, key.replace(/([A-Z])/g, " $1")] as [string, string]) : [];
+  const url = (format: string) => {
+    const params = new URLSearchParams({ type, format });
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    return `/api/reports?${params.toString()}`;
+  };
+  async function preview(nextType = type) {
+    const response = await fetch(urlFor(nextType, "preview", filters), { cache: "no-store" });
+    const result = await response.json();
+    setRows(result.rows ?? []);
+  }
+  function urlFor(nextType: string, format: string, nextFilters = filters) {
+    const params = new URLSearchParams({ type: nextType, format });
+    Object.entries(nextFilters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    return `/api/reports?${params.toString()}`;
+  }
+  useEffect(() => {
+    preview(type);
+  }, []);
+  return (
+    <section className="grid gap-5">
+      <Panel title="Housing Reports" icon={Gauge}>
+        <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
+          <div className="grid gap-3">
+            {reportGroups.map((group) => (
+              <div key={group.group} className="rounded-lg border border-slate-200 bg-white p-3">
+                <p className="text-sm font-black text-slate-500">{group.group}</p>
+                <div className="mt-2 grid gap-2">
+                  {group.reports.map(([reportType, label]) => (
+                    <button key={reportType} type="button" onClick={() => { setType(reportType); preview(reportType); }} className={`rounded-lg px-3 py-2 text-left text-sm font-black ${type === reportType ? "bg-lagoon text-white" : "bg-slate-50 text-ink hover:bg-slate-100"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase text-lagoon">{current.group}</p>
+                  <h3 className="text-2xl font-black">{current.label}</h3>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a className="rounded-lg bg-lagoon px-4 py-2 text-sm font-black text-white" href={url("csv")}>CSV</a>
+                  <a className="rounded-lg bg-coral px-4 py-2 text-sm font-black text-white" href={url("pdf")}>PDF</a>
+                  <a className="rounded-lg bg-ink px-4 py-2 text-sm font-black text-white" href={url("html")} target="_blank" rel="noreferrer">Print</a>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+                <input value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} type="date" className={HOUSING_FIELD_CLASS} />
+                <input value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} type="date" className={HOUSING_FIELD_CLASS} />
+                <select value={filters.company} onChange={(event) => setFilters((current) => ({ ...current, company: event.target.value }))} className={HOUSING_FIELD_CLASS}><option value="">Company</option>{companies.map((item) => <option key={item}>{item}</option>)}</select>
+                <select value={filters.building} onChange={(event) => setFilters((current) => ({ ...current, building: event.target.value }))} className={HOUSING_FIELD_CLASS}><option value="">Building</option>{buildings.map((item) => <option key={item}>{item}</option>)}</select>
+                <select value={filters.floor} onChange={(event) => setFilters((current) => ({ ...current, floor: event.target.value }))} className={HOUSING_FIELD_CLASS}><option value="">Floor</option>{floors.map((item) => <option key={item}>{item}</option>)}</select>
+                <select value={filters.room} onChange={(event) => setFilters((current) => ({ ...current, room: event.target.value }))} className={HOUSING_FIELD_CLASS}><option value="">Room</option>{roomNumbers.map((item) => <option key={item}>{item}</option>)}</select>
+                <input value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))} placeholder="Status" className={HOUSING_FIELD_CLASS} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => preview(type)} className="rounded-lg bg-ink px-4 py-2 text-sm font-black text-white">Apply Filters</button>
+                <button type="button" onClick={() => { const empty = { dateFrom: "", dateTo: "", company: "", building: "", floor: "", room: "", status: "" }; setFilters(empty); preview(type); }} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-black">Clear</button>
+              </div>
+            </div>
+            <HousingTable title={`${current.label} Preview`} rows={rows} columns={columns} reportType={type} />
+          </div>
+        </div>
+      </Panel>
+    </section>
   );
 }
 

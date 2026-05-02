@@ -33,6 +33,13 @@ function reportFilters(url: URL) {
     resolutionGreaterThan: numberParam(url, "resolutionGreaterThan"),
     slaBreach: url.searchParams.get("slaBreach"),
     delayedOnly: url.searchParams.get("delayedOnly") === "true",
+    dateFrom: url.searchParams.get("dateFrom") || "",
+    dateTo: url.searchParams.get("dateTo") || "",
+    company: url.searchParams.get("company") || "",
+    building: url.searchParams.get("building") || "",
+    floor: url.searchParams.get("floor") || "",
+    room: url.searchParams.get("room") || "",
+    status: url.searchParams.get("status") || "",
   };
 }
 
@@ -44,6 +51,9 @@ function numberParam(url: URL, key: string) {
 }
 
 async function reportRows(type: string, filters: ReturnType<typeof reportFilters>): Promise<ReportRow[]> {
+  if (type.startsWith("housing-")) {
+    return housingReportRows(type, filters);
+  }
   if (type === "work-orders") {
     const rows = await prisma.workOrder.findMany({
       include: { asset: true, assignedTo: true },
@@ -130,6 +140,35 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
     const rows = await prisma.iotAlert.findMany({ orderBy: { detectedAt: "desc" } });
     return rows.map((row) => ({ source: row.source, assetTag: row.assetTag, severity: row.severity, message: row.message, status: row.status, detectedAt: dateValue(row.detectedAt) }));
   }
+  if (type === "audit-logs") {
+    const rows = await prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
+    return rows.map((row) => ({ time: dateValue(row.createdAt), actorName: row.actorName, role: row.role, action: row.action, entity: row.entity, entityId: row.entityId, details: row.details }));
+  }
+  const rows = await prisma.asset.findMany({ include: { building: true, site: true }, orderBy: { tag: "asc" } });
+  return rows.map((row) => ({
+    tag: row.tag,
+    name: row.name,
+    assetDescription: row.assetDescription,
+    category: row.category,
+    assetGroup: row.assetGroup,
+    system: row.system,
+    status: row.status,
+    site: row.site?.name ?? row.siteCode ?? "",
+    zone: row.zone ?? "",
+    building: row.building?.name ?? row.buildingCode ?? "",
+    floor: row.floor ?? "",
+    room: row.room ?? "",
+    departmentCode: row.departmentCode ?? "",
+    parentAsset: row.parentAsset ?? "",
+    serialNumber: row.serialNumber,
+    manufacturer: row.manufacturer,
+    model: row.model,
+    condition: row.conditionScore,
+    cost: Number(row.purchaseCost),
+  }));
+}
+
+async function housingReportRows(type: string, filters: ReturnType<typeof reportFilters>): Promise<ReportRow[]> {
   if (type === "housing-dashboard") {
     const [rooms, bookings, inspections, assets, inventory, approvals, notifications] = await Promise.all([
       prisma.housingRoom.findMany({ include: { property: true, block: true } }),
@@ -196,21 +235,24 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
       value: count,
       detail: "Active or requested housing bookings",
     }));
-    return [...metricRows, ...companyRows, ...buildingRows, ...categoryRows];
+    return applyHousingFilters([...metricRows, ...companyRows, ...buildingRows, ...categoryRows], filters);
   }
-  if (type === "housing-rooms") {
+  if (["housing-rooms", "housing-room-utilization", "housing-room-readiness"].includes(type)) {
     const rows = await prisma.housingRoom.findMany({ include: { property: true, block: true, beds: true }, orderBy: { roomNumber: "asc" } });
-    return rows.map((row) => ({ code: row.code, property: row.property.name, block: row.block?.name ?? "", floor: row.floor, roomNumber: row.roomNumber, roomType: row.roomType, genderRestriction: row.genderRestriction, capacity: row.capacity, occupancy: row.occupancy, status: row.status, qrCode: row.qrCode, remarks: row.remarks, createdAt: dateValue(row.createdAt) }));
+    const mapped = rows.map((row) => ({ code: row.code, property: row.property.name, building: row.block?.name ?? row.property.name, block: row.block?.name ?? "", floor: row.floor, room: row.roomNumber, roomNumber: row.roomNumber, roomType: row.roomType, genderRestriction: row.genderRestriction, capacity: row.capacity, occupancy: row.occupancy, utilizationPercent: row.capacity ? Math.round((row.occupancy / row.capacity) * 100) : 0, vacantBeds: Math.max(0, row.capacity - row.occupancy), status: row.status, readiness: row.status === "AVAILABLE" && row.occupancy === 0 ? "READY" : row.status, qrCode: row.qrCode, remarks: row.remarks, createdAt: dateValue(row.createdAt) }));
+    return applyHousingFilters(type === "housing-room-readiness" ? mapped.filter((row) => ["READY", "AVAILABLE", "MAINTENANCE", "BLOCKED"].includes(String(row.readiness))) : mapped, filters);
   }
-  if (type === "housing-bookings") {
+  if (["housing-bookings", "housing-occupancy-daily", "housing-occupancy-weekly", "housing-occupancy-monthly", "housing-company-occupancy", "housing-building-occupancy", "housing-bed-occupancy"].includes(type)) {
     const rows = await prisma.housingBooking.findMany({ include: { room: { include: { property: true, block: true } }, bed: true, resident: true }, orderBy: { createdAt: "desc" } });
-    return rows.map((row) => ({ bookingNo: row.bookingNo, employeeId: row.employeeId ?? row.resident?.residentNo ?? "", employeeName: row.residentName, companyName: row.companyName ?? row.resident?.companyName ?? "", department: row.departmentCode, nationality: row.nationality ?? row.resident?.nationality ?? "", contactNumber: row.contactNumber ?? row.resident?.phone ?? "", gender: row.gender ?? row.resident?.gender ?? "", buildingNumber: row.buildingNumber ?? row.room.block?.name ?? "", floorNumber: row.floorNumber ?? row.room.floor, roomNumber: row.roomNumber ?? row.room.roomNumber, bedNumber: row.bedNumber ?? row.bed?.label ?? "", bookingType: row.bookingType, allocationType: row.allocationType, property: row.room.property.name, block: row.room.block?.name ?? "", checkIn: dateValue(row.checkIn), checkOut: dateValue(row.checkOut), status: row.status, priority: row.priority, requestedBy: row.requestedBy, approvedBy: row.approvedBy, approvalLevel: row.approvalLevel, keyHandoverBy: row.keyHandoverBy, keyHandoverAt: dateValue(row.keyHandoverAt), campIdNumber: row.campIdNumber, campIdIssuedAt: dateValue(row.campIdIssuedAt), cancellationReason: row.cancellationReason, transferReason: row.transferReason, blacklistReason: row.blacklistReason, noShowAt: dateValue(row.noShowAt), notes: row.notes }));
+    const mapped = rows.map((row) => ({ reportPeriod: periodLabel(type, row.checkIn), bookingNo: row.bookingNo, employeeId: row.employeeId ?? row.resident?.residentNo ?? "", employeeName: row.residentName, companyName: row.companyName ?? row.resident?.companyName ?? "", company: row.companyName ?? row.resident?.companyName ?? "", department: row.departmentCode, nationality: row.nationality ?? row.resident?.nationality ?? "", contactNumber: row.contactNumber ?? row.resident?.phone ?? "", gender: row.gender ?? row.resident?.gender ?? "", building: row.buildingNumber ?? row.room.block?.name ?? "", buildingNumber: row.buildingNumber ?? row.room.block?.name ?? "", floor: row.floorNumber ?? row.room.floor, floorNumber: row.floorNumber ?? row.room.floor, room: row.roomNumber ?? row.room.roomNumber, roomNumber: row.roomNumber ?? row.room.roomNumber, bedNumber: row.bedNumber ?? row.bed?.label ?? "", bookingType: row.bookingType, allocationType: row.allocationType, property: row.room.property.name, block: row.room.block?.name ?? "", checkIn: dateValue(row.checkIn), checkOut: dateValue(row.checkOut), status: row.status, priority: row.priority, requestedBy: row.requestedBy, approvedBy: row.approvedBy, approvalLevel: row.approvalLevel, keyHandoverBy: row.keyHandoverBy, keyHandoverAt: dateValue(row.keyHandoverAt), campIdNumber: row.campIdNumber, campIdIssuedAt: dateValue(row.campIdIssuedAt), cancellationReason: row.cancellationReason, transferReason: row.transferReason, blacklistReason: row.blacklistReason, noShowAt: dateValue(row.noShowAt), notes: row.notes }));
+    return applyHousingFilters(mapped, filters);
   }
-  if (type === "housing-inspections") {
+  if (["housing-inspections", "housing-cleaning-daily", "housing-deep-cleaning", "housing-inspection-report"].includes(type)) {
     const rows = await prisma.housingInspection.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { dueAt: "asc" } });
-    return rows.map((row) => ({
+    const mapped = rows.map((row) => ({
       inspectionNo: row.inspectionNo,
       property: row.room.property.name,
+      building: row.room.block?.name ?? row.room.property.name,
       block: row.room.block?.name ?? "",
       floor: row.room.floor,
       room: row.room.roomNumber,
@@ -251,10 +293,12 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
       afterPhotoUrls: row.afterPhotoUrls,
       findings: row.findings,
     }));
+    const narrowed = type === "housing-cleaning-daily" ? mapped.filter((row) => String(row.inspectionType).toLowerCase().includes("clean")) : type === "housing-deep-cleaning" ? mapped.filter((row) => String(row.inspectionType).toLowerCase().includes("deep")) : mapped;
+    return applyHousingFilters(narrowed, filters);
   }
-  if (type === "housing-assets") {
+  if (["housing-assets", "housing-missing-assets", "housing-damaged-assets", "housing-asset-transfers", "housing-asset-depreciation", "housing-asset-audit"].includes(type)) {
     const rows = await prisma.housingAsset.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { tag: "asc" } });
-    return rows.map((row) => ({
+    const mapped = rows.map((row) => ({
       assetCode: row.tag,
       barcodeQrCode: row.qrCode,
       description: row.description ?? row.name,
@@ -267,11 +311,14 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
       supplierName: row.supplierName,
       assetValue: Number(row.assetValue),
       currentValue: Number(row.currentValue),
+      depreciationValue: Math.max(0, Number(row.assetValue) - Number(row.currentValue)),
       depreciationRate: Number(row.depreciationRate),
       property: row.room?.property.name ?? "",
+      building: row.buildingLocation ?? row.room?.block?.name ?? "",
       buildingLocation: row.buildingLocation ?? row.room?.block?.name ?? "",
+      room: row.roomLocation ?? row.room?.roomNumber ?? "",
       roomLocation: row.roomLocation ?? row.room?.roomNumber ?? "",
-      room: row.room?.roomNumber ?? "",
+      floor: row.room?.floor ?? "",
       status: row.status,
       custodianName: row.custodianName,
       custodianContact: row.custodianContact,
@@ -287,10 +334,16 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
       lastInspectionAt: dateValue(row.lastInspectionAt),
       missingOrDamaged: ["MISSING", "DAMAGED"].includes(String(row.status).toUpperCase()),
     }));
+    const narrowed =
+      type === "housing-missing-assets" ? mapped.filter((row) => row.status === "MISSING") :
+      type === "housing-damaged-assets" ? mapped.filter((row) => row.status === "DAMAGED") :
+      type === "housing-asset-transfers" ? mapped.filter((row) => Boolean(row.transferredAt || row.transferredTo || row.transferredFrom)) :
+      mapped;
+    return applyHousingFilters(narrowed, filters);
   }
   if (type === "housing-inventory") {
     const rows = await prisma.housingInventory.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { sku: "asc" } });
-    return rows.map((row) => ({
+    return applyHousingFilters(rows.map((row) => ({
       sku: row.sku,
       name: row.name,
       category: row.category,
@@ -322,54 +375,156 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
       purchaseRequestNo: row.purchaseRequestNo,
       purchaseRequestStatus: row.purchaseRequestStatus,
       qrCode: row.qrCode,
-    }));
+    })), filters);
   }
   if (type === "housing-approvals") {
     const rows = await prisma.housingApproval.findMany({ orderBy: { createdAt: "desc" } });
-    return rows.map((row) => ({ entity: row.entity, entityId: row.entityId, step: row.step, level: row.level, approver: row.approver, status: row.status, action: row.action, approverName: row.approverName, remarks: row.remarks, actedAt: dateValue(row.actedAt), createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) }));
+    return applyHousingFilters(rows.map((row) => ({ entity: row.entity, entityId: row.entityId, step: row.step, level: row.level, approver: row.approver, status: row.status, action: row.action, approverName: row.approverName, remarks: row.remarks, actedAt: dateValue(row.actedAt), createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) })), filters);
   }
   if (type === "housing-notifications") {
     const rows = await prisma.housingNotification.findMany({ orderBy: { createdAt: "desc" } });
-    return rows.map((row) => ({ alertType: row.alertType, channel: row.channel, role: row.role, title: row.title, message: row.message, severity: row.severity, recipient: row.recipient, status: row.status, read: row.read, entity: row.entity, entityId: row.entityId, queuedAt: dateValue(row.queuedAt), sentAt: dateValue(row.sentAt), deliveryRef: row.deliveryRef, createdAt: dateValue(row.createdAt) }));
+    return applyHousingFilters(rows.map((row) => ({ alertType: row.alertType, channel: row.channel, role: row.role, title: row.title, message: row.message, severity: row.severity, recipient: row.recipient, status: row.status, read: row.read, entity: row.entity, entityId: row.entityId, queuedAt: dateValue(row.queuedAt), sentAt: dateValue(row.sentAt), deliveryRef: row.deliveryRef, createdAt: dateValue(row.createdAt) })), filters);
   }
   if (type === "housing-notification-settings") {
     const rows = await prisma.housingNotificationSetting.findMany({ orderBy: { label: "asc" } });
-    return rows.map((row) => ({ alertType: row.alertType, label: row.label, enabled: row.enabled, roles: row.roles, channels: row.channels, leadDays: row.leadDays, thresholdDays: row.thresholdDays, severity: row.severity, description: row.description, updatedBy: row.updatedBy, createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) }));
+    return applyHousingFilters(rows.map((row) => ({ alertType: row.alertType, label: row.label, enabled: row.enabled, roles: row.roles, channels: row.channels, leadDays: row.leadDays, thresholdDays: row.thresholdDays, severity: row.severity, description: row.description, updatedBy: row.updatedBy, createdAt: dateValue(row.createdAt), updatedAt: dateValue(row.updatedAt) })), filters);
   }
   if (type === "housing-history") {
     const rows = await prisma.housingHistory.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
-    return rows.map((row) => ({ entity: row.entity, entityId: row.entityId, action: row.action, actor: row.actor, details: row.details, createdAt: dateValue(row.createdAt) }));
+    return applyHousingFilters(rows.map((row) => ({ entity: row.entity, entityId: row.entityId, action: row.action, actor: row.actor, details: row.details, createdAt: dateValue(row.createdAt) })), filters);
   }
-  if (type === "audit-logs") {
-    const rows = await prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
-    return rows.map((row) => ({ time: dateValue(row.createdAt), actorName: row.actorName, role: row.role, action: row.action, entity: row.entity, entityId: row.entityId, details: row.details }));
-  }
-  const rows = await prisma.asset.findMany({ include: { building: true, site: true }, orderBy: { tag: "asc" } });
-  return rows.map((row) => ({
-    tag: row.tag,
-    name: row.name,
-    assetDescription: row.assetDescription,
-    category: row.category,
-    assetGroup: row.assetGroup,
-    system: row.system,
-    status: row.status,
-    site: row.site?.name ?? row.siteCode ?? "",
-    zone: row.zone ?? "",
-    building: row.building?.name ?? row.buildingCode ?? "",
-    floor: row.floor ?? "",
-    room: row.room ?? "",
-    departmentCode: row.departmentCode ?? "",
-    parentAsset: row.parentAsset ?? "",
-    serialNumber: row.serialNumber,
-    manufacturer: row.manufacturer,
-    model: row.model,
-    condition: row.conditionScore,
-    cost: Number(row.purchaseCost),
-  }));
+  if (["housing-maintenance-open", "housing-maintenance-closed", "housing-maintenance-delayed"].includes(type)) return housingMaintenanceReport(type, filters);
+  if (type === "housing-preventive-maintenance") return housingPreventiveMaintenanceReport(filters);
+  if (type === "housing-technician-performance") return housingTechnicianPerformanceReport(filters);
+  return [];
 }
 
 function dateValue(value: Date | null | undefined) {
   return value ? value.toISOString() : "";
+}
+
+async function housingMaintenanceReport(type: string, filters: ReturnType<typeof reportFilters>) {
+  const rows = await prisma.serviceRequest.findMany({
+    where: { OR: [{ category: { contains: "Housing", mode: "insensitive" } }, { departmentCode: "HOUSING" }] },
+    include: { workOrder: { include: { assignedTo: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const now = Date.now();
+  const mapped = rows.map((row) => ({
+    ticketNo: row.ticketNo,
+    title: row.title,
+    category: row.category,
+    department: row.departmentCode,
+    service: row.serviceCode,
+    assignedTeam: row.assignedTeamCode,
+    technician: row.workOrder?.assignedTo?.name ?? "",
+    supervisor: row.assignedSupervisorEmail,
+    requester: row.requester,
+    priority: row.priority,
+    status: row.status,
+    location: row.location,
+    building: locationPart(row.location, 1),
+    floor: locationPart(row.location, 2),
+    room: locationPart(row.location, 3),
+    dueAt: dateValue(row.dueAt),
+    createdAt: dateValue(row.createdAt),
+    closedAt: dateValue(row.workOrder?.finishedAt ?? row.workOrder?.verifiedAt),
+    delayed: row.dueAt.getTime() < now && !["CLOSED", "REJECTED"].includes(row.status),
+    workOrder: row.workOrder?.woNo ?? "",
+  }));
+  const narrowed =
+    type === "housing-maintenance-open" ? mapped.filter((row) => !["CLOSED", "REJECTED"].includes(String(row.status))) :
+    type === "housing-maintenance-closed" ? mapped.filter((row) => String(row.status) === "CLOSED" || Boolean(row.closedAt)) :
+    type === "housing-maintenance-delayed" ? mapped.filter((row) => row.delayed) :
+    mapped;
+  return applyHousingFilters(narrowed, filters);
+}
+
+async function housingPreventiveMaintenanceReport(filters: ReturnType<typeof reportFilters>) {
+  const rows = await prisma.housingAsset.findMany({ include: { room: { include: { property: true, block: true } } }, orderBy: { nextPmDue: "asc" } });
+  return applyHousingFilters(rows.filter((row) => row.pmSchedule || row.nextPmDue).map((row) => ({
+    assetCode: row.tag,
+    asset: row.name,
+    category: row.category,
+    pmSchedule: row.pmSchedule,
+    nextPmDue: dateValue(row.nextPmDue),
+    status: row.status,
+    property: row.room?.property.name ?? "",
+    building: row.room?.block?.name ?? row.buildingLocation ?? "",
+    floor: row.room?.floor ?? "",
+    room: row.room?.roomNumber ?? row.roomLocation ?? "",
+    custodian: row.custodianName,
+  })), filters);
+}
+
+async function housingTechnicianPerformanceReport(filters: ReturnType<typeof reportFilters>) {
+  const rows = await prisma.workOrder.findMany({
+    where: { OR: [{ departmentCode: "HOUSING" }, { type: { contains: "Housing", mode: "insensitive" } }] },
+    include: { assignedTo: true, request: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const metrics = new Map<string, { technician: string; assigned: number; closed: number; delayed: number; totalHours: number }>();
+  rows.forEach((row) => {
+    const technician = row.assignedTo?.name || row.assignedTeamCode || "Unassigned";
+    const current = metrics.get(technician) || { technician, assigned: 0, closed: 0, delayed: 0, totalHours: 0 };
+    current.assigned += 1;
+    if (["CLOSED", "COMPLETED"].includes(row.status)) current.closed += 1;
+    if (row.dueAt.getTime() < Date.now() && !["CLOSED", "COMPLETED"].includes(row.status)) current.delayed += 1;
+    if (row.responseAt && row.finishedAt) current.totalHours += Math.max(0, (row.finishedAt.getTime() - row.responseAt.getTime()) / 3600000);
+    metrics.set(technician, current);
+  });
+  return applyHousingFilters(Array.from(metrics.values()).map((row) => ({
+    technician: row.technician,
+    assignedWorkOrders: row.assigned,
+    closedWorkOrders: row.closed,
+    delayedWorkOrders: row.delayed,
+    averageCompletionHours: row.closed ? Math.round((row.totalHours / row.closed) * 100) / 100 : 0,
+    status: row.delayed ? "ACTION" : "ON_TRACK",
+  })), filters);
+}
+
+function applyHousingFilters(rows: ReportRow[], filters: ReturnType<typeof reportFilters>) {
+  return rows.filter((row) => {
+    if (filters.company && !includesValue(row, ["company", "companyName", "department", "departmentCode"], filters.company)) return false;
+    if (filters.building && !includesValue(row, ["building", "buildingNumber", "buildingLocation", "block", "property"], filters.building)) return false;
+    if (filters.floor && !includesValue(row, ["floor", "floorNumber"], filters.floor)) return false;
+    if (filters.room && !includesValue(row, ["room", "roomNumber", "roomLocation"], filters.room)) return false;
+    if (filters.status && !includesValue(row, ["status", "readiness"], filters.status)) return false;
+    if ((filters.dateFrom || filters.dateTo) && !rowMatchesDate(row, filters.dateFrom, filters.dateTo)) return false;
+    return true;
+  });
+}
+
+function includesValue(row: ReportRow, keys: string[], expected: string) {
+  const target = expected.toLowerCase();
+  return keys.some((key) => String(row[key] ?? "").toLowerCase().includes(target));
+}
+
+function rowMatchesDate(row: ReportRow, dateFrom: string, dateTo: string) {
+  const keys = ["createdAt", "updatedAt", "checkIn", "checkOut", "dueAt", "completedAt", "purchaseDate", "warrantyExpiry", "transferredAt", "nextPmDue", "closedAt", "sentAt", "queuedAt"];
+  return keys.some((key) => {
+    const value = row[key];
+    if (!value) return false;
+    const time = new Date(String(value)).getTime();
+    if (Number.isNaN(time)) return false;
+    if (dateFrom && time < new Date(`${dateFrom}T00:00:00`).getTime()) return false;
+    if (dateTo && time > new Date(`${dateTo}T23:59:59`).getTime()) return false;
+    return true;
+  });
+}
+
+function periodLabel(type: string, value: Date) {
+  if (type === "housing-occupancy-weekly") {
+    const start = new Date(value);
+    start.setDate(start.getDate() - start.getDay());
+    return `${start.getFullYear()}-W${Math.ceil((start.getDate() + 6) / 7)}`;
+  }
+  if (type === "housing-occupancy-monthly") return value.toISOString().slice(0, 7);
+  return value.toISOString().slice(0, 10);
+}
+
+function locationPart(location: string, index: number) {
+  return String(location || "").split("/").map((part) => part.trim())[index] || "";
 }
 
 function csv(rows: ReportRow[]) {
@@ -385,7 +540,8 @@ function excel(rows: ReportRow[], title: string, kpis: Record<string, unknown> |
 
 function htmlPreview(rows: ReportRow[], title: string, kpis: Record<string, unknown> | null, filters: ReturnType<typeof reportFilters>) {
   const headers = rows[0] ? Object.keys(rows[0]) : [];
-  const filterText = `Response > ${filters.responseGreaterThan ?? "-"} mins | Resolution > ${filters.resolutionGreaterThan ?? "-"} mins | SLA: ${filters.slaBreach ?? "all"} | Delayed: ${filters.delayedOnly ? "yes" : "no"}`;
+  const filterText = `Date: ${filters.dateFrom || "-"} to ${filters.dateTo || "-"} | Company: ${filters.company || "all"} | Building: ${filters.building || "all"} | Floor: ${filters.floor || "all"} | Room: ${filters.room || "all"} | Status: ${filters.status || "all"} | Response > ${filters.responseGreaterThan ?? "-"} mins | Resolution > ${filters.resolutionGreaterThan ?? "-"} mins | SLA: ${filters.slaBreach ?? "all"} | Delayed: ${filters.delayedOnly ? "yes" : "no"}`;
+  const filterQuery = reportFilterQuery(title, filters);
   const table = rows.length
     ? `<div class="table-wrap"><table><thead><tr><th>#</th>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, index) => `<tr><td>${index + 1}</td>${headers.map((header) => `<td>${escapeHtml(row[header] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
     : `<div class="empty">No records found for this report.</div>`;
@@ -432,9 +588,9 @@ function htmlPreview(rows: ReportRow[], title: string, kpis: Record<string, unkn
     <div class="toolbar">
       <div><strong>Filters</strong><br /><span style="color:var(--muted);font-size:13px">${escapeHtml(filterText)}</span></div>
       <div class="actions">
-        <a href="/api/reports?type=${encodeURIComponent(title)}&format=csv">CSV</a>
-        <a href="/api/reports?type=${encodeURIComponent(title)}&format=excel">Excel</a>
-        <a href="/api/reports?type=${encodeURIComponent(title)}&format=pdf">PDF</a>
+        <a href="/api/reports?${filterQuery}&format=csv">CSV</a>
+        <a href="/api/reports?${filterQuery}&format=excel">Excel</a>
+        <a href="/api/reports?${filterQuery}&format=pdf">PDF</a>
         <button onclick="window.print()">Print</button>
       </div>
     </div>
@@ -447,7 +603,7 @@ function htmlPreview(rows: ReportRow[], title: string, kpis: Record<string, unkn
 
 function pdf(rows: ReportRow[], title: string, kpis: Record<string, unknown> | null, filters: ReturnType<typeof reportFilters>) {
   const kpiLines = kpis ? Object.entries(kpis).map(([key, value]) => `${key}: ${value ?? "-"}`) : [];
-  const filterLines = [`Filters: response>${filters.responseGreaterThan ?? "-"} mins, resolution>${filters.resolutionGreaterThan ?? "-"} mins, sla=${filters.slaBreach ?? "all"}, delayed=${filters.delayedOnly ? "yes" : "no"}`];
+  const filterLines = [`Filters: date=${filters.dateFrom || "-"} to ${filters.dateTo || "-"}, company=${filters.company || "all"}, building=${filters.building || "all"}, floor=${filters.floor || "all"}, room=${filters.room || "all"}, status=${filters.status || "all"}, response>${filters.responseGreaterThan ?? "-"} mins, resolution>${filters.resolutionGreaterThan ?? "-"} mins, sla=${filters.slaBreach ?? "all"}, delayed=${filters.delayedOnly ? "yes" : "no"}`];
   const lines = [`Tamimi Global CAFM Report: ${title}`, `Generated: ${new Date().toISOString()}`, ...filterLines, ...kpiLines, "", ...rows.slice(0, 35).map((row) => Object.values(row).join(" | "))];
   const text = lines.join("\\n").replace(/[()\\]/g, "");
   return `%PDF-1.4
@@ -465,6 +621,14 @@ trailer<</Root 1 0 R/Size 6>>
 startxref
 0
 %%EOF`;
+}
+
+function reportFilterQuery(type: string, filters: ReturnType<typeof reportFilters>) {
+  const params = new URLSearchParams({ type });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== null && value !== false && value !== "") params.set(key, String(value));
+  });
+  return params.toString();
 }
 
 function kpiHtml(kpis: Record<string, unknown> | null, mode: "list" | "div" = "list") {
