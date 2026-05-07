@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
       DATABASE_URL: postgresql://cafm:cafm_password@db:5432/cafm?schema=public
       NEXT_PUBLIC_APP_NAME: BrightWorks CAFM
