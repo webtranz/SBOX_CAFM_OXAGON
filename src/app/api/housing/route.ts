@@ -7,6 +7,7 @@ import { ensureHousingNotificationSettings } from "@/lib/housing-alerts";
 import { prisma } from "@/lib/prisma";
 
 const activeBookingStatuses = ["REQUESTED", "PENDING_APPROVAL", "APPROVED", "CHECKED_IN"];
+const bookingStatuses = ["REQUESTED", "PENDING_APPROVAL", "APPROVED", "CHECKED_IN", "CHECKED_OUT", "REJECTED", "CANCELLED", "NO_SHOW", "TRANSFERRED"];
 const bookingApprovalSteps = [
   { step: 1, level: "Housing Coordinator Review", approver: "Housing Coordinator" },
   { step: 2, level: "Housing Supervisor Approval", approver: "Housing Supervisor" },
@@ -298,6 +299,32 @@ async function createHousingRecord(input: z.infer<typeof housingSchema>, actor: 
     });
   }
 
+  if (input.type === "bed") {
+    const room = await firstRoom(input.roomId);
+    const count = await prisma.housingBed.count({ where: { roomId: room.id } });
+    const code = input.code || `${room.code}-B${count + 1}`;
+    const bed = await prisma.housingBed.upsert({
+      where: { code },
+      update: {
+        label: input.label || input.name || `Bed ${count + 1}`,
+        status: (input.status as any) || "AVAILABLE",
+        occupant: input.occupantName || input.residentName || "",
+        occupantId: input.occupantId || input.residentId || "",
+      },
+      create: {
+        code,
+        label: input.label || input.name || `Bed ${count + 1}`,
+        roomId: room.id,
+        status: (input.status as any) || "AVAILABLE",
+        occupant: input.occupantName || input.residentName || "",
+        occupantId: input.occupantId || input.residentId || "",
+      },
+    });
+    await refreshRoomOccupancy(room.id);
+    await housingHistory("bed", bed.id, actor, "Bed created / updated", `${room.roomNumber} / ${bed.label}`, { roomId: room.id });
+    return bed;
+  }
+
   if (input.type === "booking") {
     return createBooking(input, actor);
   }
@@ -525,6 +552,7 @@ async function createBooking(input: z.infer<typeof housingSchema>, actor: string
 
   const count = await prisma.housingBooking.count();
   const bookingNo = input.code || `HBK-${String(count + 1).padStart(5, "0")}`;
+  const requestedStatus = bookingStatuses.includes(input.status || "") ? input.status as any : "PENDING_APPROVAL";
   const booking = await prisma.$transaction(async (tx) => {
     const created = await tx.housingBooking.create({
       data: {
@@ -547,11 +575,11 @@ async function createBooking(input: z.infer<typeof housingSchema>, actor: string
         bedId: bed?.id,
         checkIn: input.checkIn ? new Date(input.checkIn) : new Date(),
         checkOut: input.checkOut ? new Date(input.checkOut) : undefined,
-        status: "PENDING_APPROVAL",
+        status: requestedStatus,
         priority: (input.priority as any) || "MEDIUM",
         requestedBy: input.requestedBy || actor,
         approvedBy: input.approvedBy || "",
-        approvalLevel: bookingApprovalSteps[0].level,
+        approvalLevel: ["APPROVED", "CHECKED_IN"].includes(requestedStatus) ? bookingApprovalSteps[3].level : bookingApprovalSteps[0].level,
         attachmentUrls: input.attachmentUrls || "",
         notes: input.notes || "",
         keyHandoverBy: input.keyHandoverBy || "",
@@ -568,8 +596,8 @@ async function createBooking(input: z.infer<typeof housingSchema>, actor: string
         level: step.level,
         step: step.step,
         approver: step.approver,
-        status: step.step === 1 ? "PENDING" : "WAITING",
-        remarks: step.step === 1 ? created.notes || "" : "",
+        status: ["APPROVED", "CHECKED_IN"].includes(requestedStatus) ? "APPROVED" : step.step === 1 ? "PENDING" : "WAITING",
+        remarks: ["APPROVED", "CHECKED_IN"].includes(requestedStatus) ? "Approved during booking creation" : step.step === 1 ? created.notes || "" : "",
       })),
     });
     await tx.housingNotification.create({
@@ -583,6 +611,16 @@ async function createBooking(input: z.infer<typeof housingSchema>, actor: string
     });
     return created;
   });
+  if (bed && ["APPROVED", "CHECKED_IN"].includes(requestedStatus)) {
+    await prisma.housingBed.update({
+      where: { id: bed.id },
+      data: {
+        status: requestedStatus === "CHECKED_IN" ? "OCCUPIED" : "RESERVED",
+        occupant: booking.residentName,
+        occupantId: booking.residentId || "",
+      },
+    });
+  }
   await refreshRoomOccupancy(room.id);
   await housingHistory("booking", booking.id, actor, "Booking created", booking.notes, { roomId: room.id, bookingId: booking.id });
   return booking;

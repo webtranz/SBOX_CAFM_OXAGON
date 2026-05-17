@@ -4647,6 +4647,7 @@ function HousingOperations({
             />
             <HousingAlerts notifications={notifications} approvals={dashboardApprovals} onApprove={(approval, action) => approvalAction(approval, action as any)} canApprove={canApprove} />
           </div>
+          {canManage && <HousingSetupForms properties={housing.properties ?? []} blocks={housing.blocks ?? []} rooms={rooms} saving={saving} onSubmit={submitHousing} />}
         </section>
       )}
 
@@ -5087,6 +5088,102 @@ function HousingNotificationSettings({ settings, saving, canManage, onSubmit, on
           </HousingForm>
         )}
       </div>
+    </Panel>
+  );
+}
+
+function HousingSetupForms({ properties, blocks, rooms, saving, onSubmit }: { properties: any[]; blocks: any[]; rooms: any[]; saving: boolean; onSubmit: (formData: FormData) => void }) {
+  const [setupType, setSetupType] = useState("room");
+  return (
+    <Panel title="Housing Setup & Master Data" icon={Building2}>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {[
+          ["property", "Property / Camp"],
+          ["block", "Building / Block"],
+          ["room", "Room"],
+          ["bed", "Bed"],
+          ["resident", "Employee / Occupant"],
+        ].map(([type, label]) => (
+          <button key={type} type="button" onClick={() => setSetupType(type)} className={`rounded-lg px-3 py-2 text-sm font-black ${setupType === type ? "bg-lagoon text-white" : "bg-slate-50 text-slate-600"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {setupType === "property" && (
+        <HousingForm title="Create Housing Property / Camp" type="property" saving={saving} onSubmit={onSubmit}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input name="code" placeholder="Property code" className={HOUSING_FIELD_CLASS} />
+            <input name="name" placeholder="Property / camp name" className={HOUSING_FIELD_CLASS} />
+            <input name="site" placeholder="Site" className={HOUSING_FIELD_CLASS} />
+            <input name="city" placeholder="City" className={HOUSING_FIELD_CLASS} />
+            <input name="manager" placeholder="Housing manager" className={HOUSING_FIELD_CLASS} />
+          </div>
+        </HousingForm>
+      )}
+      {setupType === "block" && (
+        <HousingForm title="Create Building / Block" type="block" saving={saving} onSubmit={onSubmit}>
+          <select name="propertyId" className={HOUSING_FIELD_CLASS}>
+            <option value="">Select property / camp</option>
+            {properties.map((property) => <option key={property.id} value={property.id}>{property.code} / {property.name}</option>)}
+          </select>
+          <div className="grid gap-3 md:grid-cols-3">
+            <input name="code" placeholder="Block code" className={HOUSING_FIELD_CLASS} />
+            <input name="name" placeholder="Building / block name" className={HOUSING_FIELD_CLASS} />
+            <input name="capacity" type="number" min="1" placeholder="Floors" className={HOUSING_FIELD_CLASS} />
+          </div>
+        </HousingForm>
+      )}
+      {setupType === "room" && (
+        <HousingForm title="Create Room & Auto Beds" type="room" saving={saving} onSubmit={onSubmit}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <select name="propertyId" className={HOUSING_FIELD_CLASS}>
+              <option value="">Select property / camp</option>
+              {properties.map((property) => <option key={property.id} value={property.id}>{property.code} / {property.name}</option>)}
+            </select>
+            <select name="blockId" className={HOUSING_FIELD_CLASS}>
+              <option value="">Select building / block</option>
+              {blocks.map((block) => <option key={block.id} value={block.id}>{block.code} / {block.name}</option>)}
+            </select>
+            <input name="code" placeholder="Room code" className={HOUSING_FIELD_CLASS} />
+            <input name="roomNumber" placeholder="Room number" className={HOUSING_FIELD_CLASS} />
+            <input name="floor" placeholder="Floor" className={HOUSING_FIELD_CLASS} />
+            <select name="roomType" className={HOUSING_FIELD_CLASS}><option>Single</option><option>Shared</option><option>VIP</option><option>Visitor</option><option>Dormitory</option></select>
+            <select name="genderRestriction" className={HOUSING_FIELD_CLASS}><option>MIXED</option><option>MALE</option><option>FEMALE</option></select>
+            <input name="capacity" type="number" min="1" placeholder="Bed capacity" className={HOUSING_FIELD_CLASS} />
+            <select name="status" className={HOUSING_FIELD_CLASS}><option value="AVAILABLE">Available</option><option value="MAINTENANCE">Under maintenance</option><option value="BLOCKED">Blocked</option></select>
+          </div>
+          <textarea name="remarks" placeholder="Room remarks / allocation notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        </HousingForm>
+      )}
+      {setupType === "bed" && (
+        <HousingForm title="Create Bed" type="bed" saving={saving} onSubmit={onSubmit}>
+          <select name="roomId" className={HOUSING_FIELD_CLASS}>
+            <option value="">Select room</option>
+            {rooms.map((room) => <option key={room.id} value={room.id}>{room.property?.name} / {room.block?.name} / Floor {room.floor} / Room {room.roomNumber}</option>)}
+          </select>
+          <div className="grid gap-3 md:grid-cols-3">
+            <input name="code" placeholder="Bed code" className={HOUSING_FIELD_CLASS} />
+            <input name="label" placeholder="Bed label" className={HOUSING_FIELD_CLASS} />
+            <select name="status" className={HOUSING_FIELD_CLASS}><option>AVAILABLE</option><option>RESERVED</option><option>OCCUPIED</option><option>MAINTENANCE</option><option>BLOCKED</option></select>
+          </div>
+        </HousingForm>
+      )}
+      {setupType === "resident" && (
+        <HousingForm title="Create Employee / Occupant" type="resident" saving={saving} onSubmit={onSubmit}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input name="residentNo" placeholder="Employee / resident number" className={HOUSING_FIELD_CLASS} />
+            <input name="residentName" placeholder="Employee / occupant name" className={HOUSING_FIELD_CLASS} />
+            <input name="email" placeholder="Email" className={HOUSING_FIELD_CLASS} />
+            <input name="phone" placeholder="Phone" className={HOUSING_FIELD_CLASS} />
+            <input name="companyId" placeholder="Company ID" className={HOUSING_FIELD_CLASS} />
+            <input name="companyName" placeholder="Company name" className={HOUSING_FIELD_CLASS} />
+            <select name="gender" className={HOUSING_FIELD_CLASS}><option value="">Gender</option><option>MALE</option><option>FEMALE</option></select>
+            <input name="nationality" placeholder="Nationality" className={HOUSING_FIELD_CLASS} />
+            <input name="departmentCode" placeholder="Department code" className={HOUSING_FIELD_CLASS} />
+            <select name="status" className={HOUSING_FIELD_CLASS}><option>ACTIVE</option><option>BLACKLISTED</option><option>INACTIVE</option></select>
+          </div>
+        </HousingForm>
+      )}
     </Panel>
   );
 }
