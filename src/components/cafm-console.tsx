@@ -257,6 +257,43 @@ const modulePermissions: Record<string, string> = {
   housing: "housing.view",
   compliance: "compliance.view",
 };
+const actionPermissionCatalog = [
+  { code: "assets.manage", name: "Manage Assets", module: "Assets Management", description: "Create, edit, import and view asset history" },
+  { code: "work.manage", name: "Manage Work Orders", module: "Tickets", description: "Create and update work orders" },
+  { code: "work.execute", name: "Execute Work Orders", module: "Tickets", description: "Update work order status, time, photos, assets and inventory used" },
+  { code: "work.assign", name: "Assign Work Orders", module: "Tickets", description: "Assign work orders to technicians or teams" },
+  { code: "work.verify", name: "Verify Completed Work", module: "Tickets", description: "Approve, reject, reopen or close completed work" },
+  { code: "requests.manage", name: "Manage Service Requests", module: "Tickets", description: "Create, edit, assign and convert requests to work orders" },
+  { code: "requests.approve", name: "Approve or Reject Requests", module: "Tickets", description: "Review, validate, approve or reject service requests" },
+  { code: "requests.view", name: "View Service Requests", module: "Tickets", description: "View assigned service requests" },
+  { code: "work.view", name: "View Work Orders", module: "Tickets", description: "View work order panels and completion history" },
+  { code: "ppm.manage", name: "Manage PPM", module: "Tickets", description: "Create planned preventive maintenance schedules" },
+  { code: "assets.view", name: "View Assets", module: "Assets Management", description: "View asset register, history and location drill-down" },
+  { code: "documents.upload", name: "Upload Document Files", module: "Document Management", description: "Upload files to document management folders. Admin only.", adminOnly: true },
+  { code: "users.manage", name: "Manage Users", module: "Users Management", description: "Create users and assign roles" },
+  { code: "roles.manage", name: "Manage Roles", module: "Users Management", description: "Create custom roles and permission sets" },
+  { code: "reports.view", name: "View Reports", module: "Utilities", description: "Preview and download reports" },
+  { code: "reception.manage", name: "Reception Desk", module: "Reception", description: "Create resident requests and view front-desk queue" },
+  { code: "resident.portal", name: "Resident Portal", module: "Resident", description: "Create and track own requests" },
+  { code: "housing.manage", name: "Manage Housing Operations", module: "Housing Operations", description: "Create and manage accommodation, bookings, inspections, assets and inventory" },
+  { code: "housing.approve", name: "Approve Housing Requests", module: "Housing Operations", description: "Approve or reject housing bookings and escalations" },
+  { code: "housing.view", name: "View Housing", module: "Housing Operations", description: "View housing dashboards, room history, reports and alerts" },
+  { code: "compliance.manage", name: "Manage Compliance & Certification", module: "Compliance & Certification", description: "Create and renew statutory certificates, permits and regulatory audits" },
+  { code: "compliance.view", name: "View Compliance & Certification", module: "Compliance & Certification", description: "View compliance dashboard, certificate register, expiry alerts and reports" },
+];
+function permissionSlug(value: string) {
+  return value.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
+}
+const sectionPermissionCatalog = moduleGroups.flatMap((group) => {
+  const items = "direct" in group ? [group.direct] : group.items;
+  return items.map((item) => ({
+    code: `section.${permissionSlug(group.label)}.${permissionSlug(item.label)}.view`,
+    name: item.label === group.label ? `View ${group.label}` : `View ${item.label}`,
+    module: group.label,
+    description: `Access ${item.label} under ${group.label}.`,
+  }));
+});
+const permissionCatalog = [...sectionPermissionCatalog, ...actionPermissionCatalog];
 const statToneClasses: Record<string, string> = {
   coral: "text-coral",
   leaf: "text-leaf",
@@ -733,7 +770,6 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               </div>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => navigate("work", "Tickets-Work Orders")} className="flex h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 font-medium text-white shadow-sm transition hover:bg-emerald-700">
-                  <Plus size={18} />
                   Work Orders
                 </button>
                 <button onClick={() => navigate("helpdesk", "Tickets-Service Requests")} className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 font-medium text-slate-700 shadow-sm transition hover:bg-slate-100">
@@ -832,6 +868,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               documentUploads={records.documentUploads ?? []}
               view={activeView}
               refreshData={refreshData}
+              canUploadDocuments={roleKindLabel(user.role) === "admin"}
             />
           )}
           {canViewActive && active === "incidents" && (
@@ -4218,6 +4255,7 @@ function DocumentManagement({
   documentUploads,
   view,
   refreshData,
+  canUploadDocuments,
 }: {
   assets: any[];
   services: any[];
@@ -4226,6 +4264,7 @@ function DocumentManagement({
   documentUploads: any[];
   view: string;
   refreshData: () => Promise<void>;
+  canUploadDocuments: boolean;
 }) {
   const [tab, setTab] = useState(view || "documents-om-manuals");
 
@@ -4359,7 +4398,7 @@ function DocumentManagement({
             </button>
           ))}
         </div>
-        <DocumentUploadForm assets={assets} category={activeCategory} refreshData={refreshData} />
+        {canUploadDocuments && <DocumentUploadForm assets={assets} category={activeCategory} refreshData={refreshData} />}
         <div className="mt-5">
           {tab === "documents-om-manuals" && (
             <DataTable
@@ -4975,17 +5014,36 @@ function UsersRoles({
 }) {
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [role, setRole] = useState("Admin");
+  const permissionsByCode = useMemo(() => {
+    const catalog = new Map(permissionCatalog.map((permission) => [permission.code, { ...permission, id: permission.code }]));
+    permissions.forEach((permission) => {
+      const existing = catalog.get(permission.code);
+      catalog.set(permission.code, { ...existing, ...permission });
+    });
+    return Array.from(catalog.values()).sort((left, right) => `${left.module}-${left.name}`.localeCompare(`${right.module}-${right.name}`));
+  }, [permissions]);
+  const visiblePermissions = permissionsByCode.filter((permission) => role === "Admin" || !(permission as any).adminOnly);
+  const groupedPermissions = visiblePermissions.reduce((groups: Record<string, any[]>, permission) => {
+    groups[permission.module] = [...(groups[permission.module] ?? []), permission];
+    return groups;
+  }, {});
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>(
     rolePermissions.filter((item) => item.role === "Admin").map((item) => item.permission.code),
   );
 
   function changeRole(nextRole: string) {
     setRole(nextRole);
-    setSelectedPermissions(rolePermissions.filter((item) => item.role === nextRole).map((item) => item.permission.code));
+    const nextPermissions = rolePermissions.filter((item) => item.role === nextRole).map((item) => item.permission.code);
+    setSelectedPermissions(nextRole === "Admin" ? nextPermissions : nextPermissions.filter((code) => code !== "documents.upload"));
   }
 
   function togglePermission(code: string) {
     setSelectedPermissions((current) => current.includes(code) ? current.filter((item) => item !== code) : [...current, code]);
+  }
+
+  function saveVisiblePermissions() {
+    const allowedPermissions = role === "Admin" ? selectedPermissions : selectedPermissions.filter((code) => code !== "documents.upload");
+    saveRolePermissions(role, allowedPermissions);
   }
 
   return (
@@ -5019,17 +5077,25 @@ function UsersRoles({
             <select value={role} onChange={(event) => changeRole(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3">
               {roleOptions(roles).map((item) => <option key={item}>{item}</option>)}
             </select>
-            <button onClick={() => saveRolePermissions(role, selectedPermissions)} className="rounded-lg bg-ink px-4 py-2 text-sm font-black text-white">Save Permissions</button>
+            <button onClick={saveVisiblePermissions} className="rounded-lg bg-ink px-4 py-2 text-sm font-black text-white">Save Permissions</button>
           </div>
-          <div className="grid gap-2 md:grid-cols-2">
-            {permissions.map((permission) => (
-              <label key={permission.id} className="flex items-start gap-3 rounded-lg bg-slate-50 p-3 text-sm">
-                <input type="checkbox" checked={selectedPermissions.includes(permission.code)} onChange={() => togglePermission(permission.code)} className="mt-1" />
-                <span>
-                  <span className="block font-black">{permission.name}</span>
-                  <span className="block text-slate-500">{permission.module} / {permission.code}</span>
-                </span>
-              </label>
+          <div className="grid gap-4">
+            {Object.entries(groupedPermissions).map(([module, modulePermissions]) => (
+              <div key={module} className="rounded-lg border border-slate-200 bg-white p-3">
+                <h4 className="text-sm font-black text-ink">{module}</h4>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {modulePermissions.map((permission) => (
+                    <label key={permission.code} className="flex items-start gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+                      <input type="checkbox" checked={selectedPermissions.includes(permission.code)} onChange={() => togglePermission(permission.code)} className="mt-1" />
+                      <span>
+                        <span className="block font-black">{permission.name}</span>
+                        <span className="block text-slate-500">{permission.code}</span>
+                        <span className="mt-1 block text-xs text-slate-500">{permission.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </Panel>

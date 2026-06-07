@@ -11,7 +11,8 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
-    const permissions = await prisma.permission.findMany({ where: { code: { in: input.permissionCodes } } });
+    const permissionCodes = input.role === "Admin" ? input.permissionCodes : input.permissionCodes.filter((code) => code !== "documents.upload");
+    const permissions = await prisma.permission.findMany({ where: { code: { in: permissionCodes } } });
     await prisma.rolePermission.deleteMany({ where: { role: input.role } });
     await prisma.rolePermission.createMany({
       data: permissions.map((permission) => ({ role: input.role, permissionId: permission.id })),

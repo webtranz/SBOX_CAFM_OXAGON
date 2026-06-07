@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
-import { canManageDepartmentRecord } from "@/lib/access-control";
+import { accessRole } from "@/lib/access-control";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -40,8 +40,8 @@ export async function POST(request: Request) {
     if (!asset) return NextResponse.json({ message: "Asset Number was not found." }, { status: 404 });
 
     const user = await getCurrentUser();
-    if (!canManageDepartmentRecord(user, asset.departmentCode)) {
-      return NextResponse.json({ message: "You do not have permission to upload documents for this asset." }, { status: 403 });
+    if (accessRole(user) !== "admin") {
+      return NextResponse.json({ message: "Only Admin can upload document files." }, { status: 403 });
     }
 
     const uploadDir = path.join(process.cwd(), "public", "uploads", "document-management", folder, assetFolder);
