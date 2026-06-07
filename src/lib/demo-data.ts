@@ -2,7 +2,7 @@ export const moduleStats = [
   { label: "Open Work Orders", value: "428", delta: "+18 today", tone: "coral" },
   { label: "SLA Compliance", value: "94.7%", delta: "+3.2% vs last month", tone: "leaf" },
   { label: "Critical Assets Online", value: "98.9%", delta: "7 assets at risk", tone: "lagoon" },
-  { label: "Inventory Value", value: "$2.8M", delta: "16 low-stock SKUs", tone: "sun" },
+  { label: "Inventory Value", value: "2.8M", delta: "16 low-stock SKUs", tone: "sun", currency: true },
 ];
 
 export const chartData = [

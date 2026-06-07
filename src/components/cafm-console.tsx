@@ -267,6 +267,46 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
+const currencyKeyPattern = /(cost|value|price|amount|repair|replacement|salvage|depreciation|budget|expense|revenue)/i;
+
+function isCurrencyField(keyOrLabel: string) {
+  return currencyKeyPattern.test(keyOrLabel);
+}
+
+function formatCurrencyValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  const text = String(value).trim().replace(/^\$\s*/, "").replace(/^SAR\s*/i, "").replace(/^ر\.س\s*/, "");
+  const numeric = Number(text.replaceAll(",", ""));
+  if (Number.isFinite(numeric) && text !== "") {
+    return numeric.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  return text;
+}
+
+function SaudiRiyalLogo({ className = "h-[1em] w-[1.15em]" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-block shrink-0 bg-current align-[-0.12em] ${className}`}
+      style={{
+        WebkitMask: "url('/saudi-riyal-symbol.svg') center / contain no-repeat",
+        mask: "url('/saudi-riyal-symbol.svg') center / contain no-repeat",
+      }}
+    />
+  );
+}
+
+function CurrencyAmount({ value, className = "" }: { value: unknown; className?: string }) {
+  const formatted = formatCurrencyValue(value);
+  if (formatted === "-") return <span className={className}>-</span>;
+  return (
+    <span className={`inline-flex items-baseline gap-1 ${className}`} aria-label={`${formatted} Saudi Riyals`}>
+      <SaudiRiyalLogo />
+      <span>{formatted}</span>
+    </span>
+  );
+}
+
 function minutesBetween(start?: unknown, end?: unknown) {
   if (!start || !end) return "-";
   const startTime = new Date(String(start)).getTime();
@@ -647,7 +687,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
             {moduleStats.map((stat) => (
               <div key={stat.label} className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-medium text-slate-500">{stat.label}</p>
-                <p className="mt-2 text-3xl font-bold text-slate-900">{stat.value}</p>
+                <p className="mt-2 text-3xl font-bold text-slate-900">{stat.currency ? <CurrencyAmount value={stat.value} /> : stat.value}</p>
                 <p className={`mt-1 text-sm font-medium ${statToneClasses[stat.tone]}`}>{stat.delta}</p>
               </div>
             ))}
@@ -1114,7 +1154,7 @@ function AssetCreateForm({ teams, users, locations, onSubmit, saving }: { teams:
     formData.set("remarks", [
       parts ? `Parts: ${parts}` : "",
       vendors ? `Vendors: ${vendors}` : "",
-      replacementCost ? `Replacement Cost: ${replacementCost}` : "",
+      replacementCost ? `Replacement Cost: SAR ${formatCurrencyValue(replacementCost)}` : "",
     ].filter(Boolean).join("\n"));
 
     await onSubmit(formData);
@@ -1335,7 +1375,7 @@ function AssetIdentity({ asset }: { asset: any }) {
           <span>Remarks: {asset.remarks ?? "-"}</span>
           <span>Warranty: {asset.warrantyExpiry ? new Date(asset.warrantyExpiry).toLocaleDateString() : "-"}</span>
           <span>Contract: {asset.contractRef ?? "-"}</span>
-          <span>Book value: ${bookValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          <span>Book value: <CurrencyAmount value={bookValue} /></span>
         </div>
       </div>
     </Panel>
@@ -2838,7 +2878,9 @@ function PreviewField({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="rounded-lg bg-slate-50 p-3">
       <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-sm font-black text-slate-700">{String(value || "-")}</p>
+      <p className="mt-1 break-words text-sm font-black text-slate-700">
+        {isCurrencyField(label) ? <CurrencyAmount value={value} /> : String(value || "-")}
+      </p>
     </div>
   );
 }
@@ -4905,7 +4947,7 @@ function HousingTable({ title, rows, columns, onSelect, actions, reportType }: {
             {visibleRows.map((row, index) => (
               <tr key={row.id ?? index} onClick={() => onSelect?.(row)} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50">
                 <td className="px-3 py-3 font-black text-slate-500">{(safePage - 1) * PAGE_SIZE + index + 1}</td>
-                {columns.map(([key]) => <td key={key} className="max-w-[260px] px-3 py-3"><HousingCellValue value={key.includes("At") || key.includes("Date") || key === "dueAt" || key === "checkIn" ? formatDateCell(row[key]) : row[key]} /></td>)}
+                {columns.map(([key]) => <td key={key} className="max-w-[260px] px-3 py-3"><HousingCellValue field={key} value={key.includes("At") || key.includes("Date") || key === "dueAt" || key === "checkIn" ? formatDateCell(row[key]) : row[key]} /></td>)}
                 {actions && <td className="px-3 py-3">{actions(row)}</td>}
               </tr>
             ))}
@@ -5024,7 +5066,8 @@ function HousingReportsWorkspace({ rooms, bookings }: { rooms: any[]; bookings: 
   );
 }
 
-function HousingCellValue({ value }: { value: any }) {
+function HousingCellValue({ value, field = "" }: { value: any; field?: string }) {
+  if (isCurrencyField(field)) return <CurrencyAmount value={value} />;
   if (typeof value === "string") {
     const status = value.toUpperCase();
     if (["AVAILABLE", "APPROVED", "PASSED", "CHECKED_IN", "ACTIVE"].includes(status)) return <span className="rounded-lg bg-leaf/10 px-2 py-1 font-black text-leaf">{value}</span>;
@@ -5705,7 +5748,7 @@ function DataTable({ rows, columns }: { rows: any[]; columns: [string, string][]
                 <td className="whitespace-nowrap px-3 py-3 font-black text-slate-500">{startIndex + index + 1}</td>
                 {columns.map(([key]) => (
                   <td key={key} className="max-w-[280px] whitespace-nowrap px-3 py-3">
-                    <CellValue value={row[key]} />
+                    <CellValue value={row[key]} field={key} />
                   </td>
                 ))}
               </tr>
@@ -5758,8 +5801,9 @@ function PaginationControls({ page, totalPages, totalItems, onPageChange }: { pa
   );
 }
 
-function CellValue({ value }: { value: any }) {
+function CellValue({ value, field = "" }: { value: any; field?: string }) {
   if (value === null || value === undefined) return <span className="text-slate-400">-</span>;
+  if (isCurrencyField(field)) return <CurrencyAmount value={value} />;
   if (typeof value === "string" && ["CRITICAL", "HIGH", "EXTREME"].includes(value)) return <span className="rounded-lg bg-coral/10 px-2 py-1 font-black text-coral">{value}</span>;
   if (typeof value === "string" && ["COMPLETED", "CLOSED", "ACTIVE"].includes(value)) return <span className="rounded-lg bg-leaf/10 px-2 py-1 font-black text-leaf">{value}</span>;
   if (typeof value === "string" && value.includes("T")) return new Date(value).toLocaleDateString();

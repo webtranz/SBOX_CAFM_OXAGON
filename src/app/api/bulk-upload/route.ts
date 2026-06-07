@@ -79,7 +79,7 @@ async function importAsset(row: Row) {
     value(row, "remarks", "Remarks"),
     value(row, "Vendors") ? `Vendors: ${value(row, "Vendors")}` : "",
     value(row, "Parts") ? `Parts: ${value(row, "Parts")}` : "",
-    replacementCost ? `Replacement Cost: ${replacementCost}` : "",
+    replacementCost ? `Replacement Cost: SAR ${replacementCost}` : "",
   ].filter(Boolean).join("\n");
   const asset = await prisma.asset.upsert({
     where: { tag },

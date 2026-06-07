@@ -479,7 +479,7 @@ async function handleInspectionOutputs(inspection: any, input: Record<string, un
         attachmentUrls: [text(input.beforePhotoUrls), text(input.afterPhotoUrls), text(input.photoUrls), text(input.attachmentUrls)].filter(Boolean).join(","),
         slaHours: 24,
         dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        description: [text(input.damageReport), text(input.missingAssetReport), text(input.findings), `Estimated repair cost: ${numberValue(input.estimatedRepairCost) || 0}`, `Occupant liability: ${text(input.occupantLiability) || "-"}`].filter(Boolean).join("\n"),
+        description: [text(input.damageReport), text(input.missingAssetReport), text(input.findings), `Estimated repair cost: SAR ${numberValue(input.estimatedRepairCost) || 0}`, `Occupant liability: ${text(input.occupantLiability) || "-"}`].filter(Boolean).join("\n"),
       },
     });
     await prisma.housingInspection.update({ where: { id: inspection.id }, data: { maintenanceTicketNo: request.ticketNo } });
