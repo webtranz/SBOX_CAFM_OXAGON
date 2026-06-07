@@ -180,9 +180,8 @@ const moduleGroups = [
   {
     label: "Incident & Case Management",
     icon: AlertTriangle,
-    items: [
-      { id: "incidents", label: "Incident & Case Management", icon: AlertTriangle, view: "incident-cases" },
-    ],
+    direct: { id: "incidents", label: "Incident & Case Management", icon: AlertTriangle, view: "incidents" },
+    items: [],
   },
   {
     label: "Resource Management",
@@ -650,8 +649,28 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
 
           <nav className="grid flex-1 content-start gap-1 px-4 pb-4">
             {moduleGroups.map((group) => {
-              const visibleItems = group.items.filter((item) => canOpenModule(item.id));
+              const directItem = "direct" in group ? group.direct : null;
+              const visibleItems = directItem ? (canOpenModule(directItem.id) ? [directItem] : []) : group.items.filter((item) => canOpenModule(item.id));
               if (!visibleItems.length) return null;
+              if (directItem) {
+                const Icon = directItem.icon;
+                const menuKey = group.label;
+                return (
+                  <button
+                    key={group.label}
+                    onClick={() => {
+                      navigate(directItem.id, menuKey, directItem.view);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                      activeMenuKey === menuKey ? "bg-emerald-50 text-emerald-700 shadow-sm" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    }`}
+                  >
+                    <Icon size={18} className={activeMenuKey === menuKey ? "shrink-0 text-emerald-600" : "shrink-0 text-slate-500"} />
+                    <span className="min-w-0 truncate">{group.label}</span>
+                  </button>
+                );
+              }
 
               return (
                 <details key={group.label} open={visibleItems.some((item) => `${group.label}-${item.label}` === activeMenuKey)} className="group">
