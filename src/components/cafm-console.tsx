@@ -28,6 +28,7 @@ import {
   TicketCheck,
   Wrench,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -93,7 +94,10 @@ type ActionPermissions = {
   verifyWork: boolean;
 };
 
-const moduleGroups = [
+type ModuleItem = { id: string; label: string; icon: LucideIcon; view?: string };
+type ModuleGroup = { label: string; icon: LucideIcon; items: ModuleItem[]; flat?: boolean };
+
+const moduleGroups: ModuleGroup[] = [
   {
     label: "Dashboard",
     icon: LayoutDashboard,
@@ -181,8 +185,8 @@ const moduleGroups = [
   {
     label: "Incident & Case Management",
     icon: AlertTriangle,
-    direct: { id: "incidents", label: "Incident & Case Management", icon: AlertTriangle, view: "incidents" },
-    items: [],
+    flat: true,
+    items: [{ id: "incidents", label: "Incident & Case Management", icon: AlertTriangle, view: "incidents" }],
   },
   {
     label: "Resource Management",
@@ -285,8 +289,7 @@ function permissionSlug(value: string) {
   return value.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
 }
 const sectionPermissionCatalog = moduleGroups.flatMap((group) => {
-  const items = "direct" in group ? [group.direct] : group.items;
-  return items.map((item) => ({
+  return group.items.map((item) => ({
     code: `section.${permissionSlug(group.label)}.${permissionSlug(item.label)}.view`,
     name: item.label === group.label ? `View ${group.label}` : `View ${item.label}`,
     module: group.label,
@@ -687,17 +690,17 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
 
           <nav className="grid flex-1 content-start gap-1 px-4 pb-4">
             {moduleGroups.map((group) => {
-              const directItem = "direct" in group ? group.direct : null;
-              const visibleItems = directItem ? (canOpenModule(directItem.id) ? [directItem] : []) : group.items.filter((item) => canOpenModule(item.id));
+              const visibleItems = group.items.filter((item) => canOpenModule(item.id));
               if (!visibleItems.length) return null;
-              if (directItem) {
-                const Icon = directItem.icon;
+              if ("flat" in group && group.flat) {
+                const item = visibleItems[0];
+                const Icon = item.icon;
                 const menuKey = group.label;
                 return (
                   <button
                     key={group.label}
                     onClick={() => {
-                      navigate(directItem.id, menuKey, directItem.view);
+                      navigate(item.id, menuKey, String("view" in item ? item.view : item.id));
                       setMobileMenuOpen(false);
                     }}
                     className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
