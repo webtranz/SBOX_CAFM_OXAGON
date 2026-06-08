@@ -195,7 +195,6 @@ const moduleGroups: ModuleGroup[] = [
       { id: "resource", label: "Employees", icon: Users, view: "resource-employees" },
       { id: "resource", label: "Shifts & Rotations", icon: CalendarCheck, view: "resource-shifts" },
       { id: "resource", label: "Time Sheets", icon: ClipboardCheck, view: "resource-timesheets" },
-      { id: "users", label: "Roles & Permissions", icon: ShieldCheck },
     ],
   },
   {
@@ -214,7 +213,7 @@ const moduleGroups: ModuleGroup[] = [
     icon: Users,
     items: [
       { id: "users", label: "Users Management", icon: Users, view: "users-management" },
-      { id: "users", label: "Permissions", icon: ShieldCheck, view: "permissions" },
+      { id: "users", label: "Roles & Permissions", icon: ShieldCheck, view: "permissions" },
     ],
   },
   {
@@ -910,6 +909,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               teams={records.teams}
               departments={records.departments}
               roles={records.roles}
+              currentUser={user}
               permissions={records.permissions}
               rolePermissions={records.rolePermissions}
               saving={saving}
@@ -1045,7 +1045,7 @@ function AccessDenied({ moduleId }: { moduleId: string }) {
   return (
     <Panel title="Access Restricted" icon={ShieldCheck}>
       <p className="text-sm font-bold text-slate-600">
-        Your role does not have permission for {moduleId}. Update this role in Users Management / Permissions to allow access.
+        Your role does not have permission for {moduleId}. Update this role in Users Management / Roles & Permissions to allow access.
       </p>
     </Panel>
   );
@@ -4991,6 +4991,7 @@ function UsersRoles({
   teams,
   departments,
   roles,
+  currentUser,
   permissions,
   rolePermissions,
   submitUser,
@@ -5006,6 +5007,7 @@ function UsersRoles({
   teams: any[];
   departments: any[];
   roles: any[];
+  currentUser: { id?: string; email: string; name: string; role: string };
   permissions: any[];
   rolePermissions: any[];
   submitUser: (formData: FormData) => void;
@@ -5079,17 +5081,28 @@ function UsersRoles({
         <Panel title="Users" icon={Users}>
           <ReportButtons type="users" label="Users report" />
           <div className="grid gap-2">
-            {users.map((user) => (
-              <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3">
+            {users.map((account) => (
+              <div key={account.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3">
                 <div>
-                  <p className="font-black">{user.name}</p>
-                  <p className="text-sm text-slate-600">{user.email} / {user.role} / {user.department}</p>
+                  <p className="font-black">{account.name}</p>
+                  <p className="text-sm text-slate-600">{account.email} / {account.role} / {account.department}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setEditingUser(user)} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Edit</button>
+                  <button onClick={() => setEditingUser(account)} className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white">Edit</button>
                   <button
-                    onClick={() => user.email === "admin@cafm.local" ? setToast("Initial admin user cannot be deleted.") : deleteUser(user.id)}
-                    className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white"
+                    disabled={account.id === currentUser.id || account.email === currentUser.email}
+                    onClick={() => {
+                      if (account.id === currentUser.id || account.email === currentUser.email) {
+                        setToast("You cannot delete your own user account.");
+                        return;
+                      }
+                      if (account.email === "admin@cafm.local") {
+                        setToast("Initial admin user cannot be deleted.");
+                        return;
+                      }
+                      deleteUser(account.id);
+                    }}
+                    className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-300"
                   >
                     Delete
                   </button>

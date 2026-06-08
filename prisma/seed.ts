@@ -125,20 +125,21 @@ async function main() {
     ["section.resource.management.employees.view", "View Employees", "Resource Management", "Access Employees under Resource Management."],
     ["section.resource.management.shifts.and.rotations.view", "View Shifts & Rotations", "Resource Management", "Access Shifts & Rotations under Resource Management."],
     ["section.resource.management.time.sheets.view", "View Time Sheets", "Resource Management", "Access Time Sheets under Resource Management."],
-    ["section.resource.management.roles.and.permissions.view", "View Roles & Permissions", "Resource Management", "Access Roles & Permissions under Resource Management."],
     ["section.services.department.codes.view", "View Department Codes", "Services", "Access Department Codes under Services."],
     ["section.services.create.team.code.view", "View Create Team Code", "Services", "Access Create Team Code under Services."],
     ["section.services.service.teams.view", "View Service Teams", "Services", "Access Service Teams under Services."],
     ["section.services.services.catalog.view", "View Services Catalog", "Services", "Access Services Catalog under Services."],
     ["section.services.bulk.upload.services.view", "View Bulk Upload Services", "Services", "Access Bulk Upload Services under Services."],
     ["section.users.management.users.management.view", "View Users Management", "Users Management", "Access Users Management under Users Management."],
-    ["section.users.management.permissions.view", "View Permissions", "Users Management", "Access Permissions under Users Management."],
+    ["section.users.management.roles.and.permissions.view", "View Roles & Permissions", "Users Management", "Access Roles & Permissions under Users Management."],
     ["section.utilities.bulk.upload.center.view", "View Bulk Upload Center", "Utilities", "Access Bulk Upload Center under Utilities."],
     ["section.utilities.bulk.upload.templates.view", "View Bulk Upload Templates", "Utilities", "Access Bulk Upload Templates under Utilities."],
     ["section.utilities.csv.excel.pdf.reports.view", "View CSV / Excel / PDF Reports", "Utilities", "Access CSV / Excel / PDF Reports under Utilities."],
     ["section.activity.logs.audit.logs.view", "View Audit Logs", "Activity Logs", "Access Audit Logs under Activity Logs."],
     ["section.activity.logs.reports.preview.view", "View Reports Preview", "Activity Logs", "Access Reports Preview under Activity Logs."],
   ] as const;
+  await prisma.permission.deleteMany({ where: { code: "section.resource.management.roles.and.permissions.view" } });
+  await prisma.permission.deleteMany({ where: { code: "section.users.management.permissions.view" } });
   const actionPermissions = [
     ["assets.manage", "Manage Assets", "Assets Management", "Create, edit, import and view asset history"],
     ["work.manage", "Manage Work Orders", "Tickets", "Create and update work orders"],

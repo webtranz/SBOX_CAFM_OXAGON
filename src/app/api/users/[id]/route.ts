@@ -50,10 +50,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { error } = await requirePermission("users.manage");
+    const { error, user: currentUser } = await requirePermission("users.manage");
     if (error) return error;
     const { id } = await params;
+    if (currentUser?.id === id) {
+      return apiError(new Error("You cannot delete your own user account."), "Unable to delete user", 400);
+    }
     const user = await prisma.user.findUnique({ where: { id } });
+    if (user?.email === currentUser?.email) {
+      return apiError(new Error("You cannot delete your own user account."), "Unable to delete user", 400);
+    }
     if (user?.email === "admin@cafm.local") {
       return apiError(new Error("Initial admin user cannot be deleted."), "Unable to delete user", 400);
     }
