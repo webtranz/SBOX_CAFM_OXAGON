@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { addDays, addHours, addYears } from "date-fns";
 import { apiError } from "@/lib/api-response";
+import { requirePermission } from "@/lib/api-auth";
 import { csvResponse, parseCsv } from "@/lib/csv";
 import { prisma } from "@/lib/prisma";
 
@@ -8,6 +9,8 @@ type Row = Record<string, string>;
 
 export async function POST(request: Request) {
   try {
+    const { error } = await requirePermission("assets.manage");
+    if (error) return error;
     const formData = await request.formData();
     const module = String(formData.get("module") || "");
     const file = formData.get("file");

@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "@/lib/api-response";
+import { requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -19,11 +21,15 @@ const schema = z.object({
 });
 
 export async function GET() {
+  const { error } = await requirePermission("users.manage");
+  if (error) return error;
   return NextResponse.json(await prisma.user.findMany({ include: { team: true }, orderBy: { name: "asc" } }));
 }
 
 export async function POST(request: Request) {
   try {
+    const { error } = await requirePermission("users.manage");
+    if (error) return error;
     const input = schema.parse(await request.json());
     const team = input.teamCode ? await prisma.team.findUnique({ where: { code: input.teamCode } }) : null;
     const created = await prisma.user.upsert({
@@ -50,7 +56,7 @@ export async function POST(request: Request) {
         notifyFacilityBooking: input.notifyFacilityBooking ?? false,
         teamId: team?.id,
         active: input.active ?? true,
-        passwordHash: await bcrypt.hash(input.password || "Welcome@123", 10),
+        passwordHash: await bcrypt.hash(input.password || randomUUID(), 10),
       },
     });
     return NextResponse.json({ ...created, passwordHash: undefined }, { status: 201 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { addDays } from "date-fns";
 import { z } from "zod";
 import { apiError } from "@/lib/api-response";
+import { requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
 const boolValue = z.preprocess((value) => {
@@ -27,6 +28,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const { error } = await requirePermission("ppm.manage");
+    if (error) return error;
     const input = schema.parse(await request.json());
     const count = await prisma.preventiveMaintenance.count();
     const code = input.code || `PPM-${String(count + 1).padStart(4, "0")}`;
@@ -53,6 +56,8 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const { error } = await requirePermission("ppm.manage");
+    if (error) return error;
     const input = schema.extend({ id: z.string().optional() }).parse(await request.json());
     const id = input.id || undefined;
     const code = input.code || undefined;

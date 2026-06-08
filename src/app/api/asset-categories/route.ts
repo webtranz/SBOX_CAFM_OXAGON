@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "@/lib/api-response";
+import { requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -18,6 +19,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const { error } = await requirePermission("assets.manage");
+    if (error) return error;
     const input = schema.parse(await request.json());
     const count = await prisma.assetCategory.count();
     const code = input.code || `CAT-${String(count + 1).padStart(3, "0")}`;

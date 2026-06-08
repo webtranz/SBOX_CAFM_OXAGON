@@ -5152,7 +5152,7 @@ function UserForm({ title, user, teams, departments, users, roles, onSubmit, sav
         <label className="grid gap-1 text-sm font-bold text-slate-600">User Name<input name="name" defaultValue={user?.name ?? ""} placeholder="Enter your Name" className={cls} /></label>
         <label className="grid gap-1 text-sm font-bold text-slate-600">Email<input name="email" defaultValue={user?.email ?? ""} type="email" placeholder="Enter Email" className={cls} /></label>
         <label className="grid gap-1 text-sm font-bold text-slate-600">Phone<input name="phone" defaultValue={user?.phone ?? ""} placeholder="Enter Phone Number" className={cls} /></label>
-        <label className="grid gap-1 text-sm font-bold text-slate-600">Password<input name="password" type="password" placeholder={user ? "New password optional" : "Optional, default Welcome@123"} className={cls} /></label>
+        <label className="grid gap-1 text-sm font-bold text-slate-600">Password<input name="password" type="password" placeholder={user ? "New password optional" : "Optional, auto-generated if blank"} className={cls} /></label>
         <label className="grid gap-1 text-sm font-bold text-slate-600">Select User Role<select name="role" defaultValue={user?.role ?? "Service Team"} className={cls}>
           {roleOptions(roles).map((role) => <option key={role}>{role}</option>)}
         </select></label>

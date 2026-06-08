@@ -37,8 +37,8 @@ export default function LoginPage() {
           </div>
         </div>
         <div className="mt-6 grid gap-3">
-          <input name="email" type="email" defaultValue="admin@cafm.local" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="password" type="password" defaultValue="Admin@12345" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="email" type="email" placeholder="Email" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="password" type="password" placeholder="Password" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
           <button className="h-11 rounded-lg bg-emerald-600 font-medium text-white transition hover:bg-emerald-700">Login</button>
           {message && <p className="text-sm font-bold text-coral">{message}</p>}
         </div>

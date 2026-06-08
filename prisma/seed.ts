@@ -1,5 +1,6 @@
 import { addDays, subDays } from "date-fns";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -45,12 +46,12 @@ async function resetOperationalData() {
 }
 
 async function main() {
-  const passwordHash = await bcrypt.hash("cafm12345", 10);
-  const adminPasswordHash = await bcrypt.hash("Admin@12345", 10);
+  const passwordHash = await bcrypt.hash(process.env.SEED_USER_PASSWORD || randomUUID(), 10);
+  const adminPasswordHash = await bcrypt.hash(process.env.ADMIN_INITIAL_PASSWORD || randomUUID(), 10);
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@cafm.local" },
-    update: { passwordHash: adminPasswordHash, role: "Admin", active: true },
+    update: { role: "Admin", active: true },
     create: {
       name: "System Administrator",
       email: "admin@cafm.local",

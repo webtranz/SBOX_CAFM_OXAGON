@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
+import { requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 import { workOrderKpis, workOrderMetrics } from "@/lib/work-order-analytics";
 
 type ReportRow = Record<string, string | number | boolean | null>;
 
 export async function GET(request: Request) {
+  const { error } = await requirePermission("reports.view");
+  if (error) return error;
   const url = new URL(request.url);
   const type = url.searchParams.get("type") || "assets";
   const format = url.searchParams.get("format") || "preview";

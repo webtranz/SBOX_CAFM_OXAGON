@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/api-auth";
 
 const templates: Record<string, string> = {
   assets: "Entity Name,Asset Name,Description,Location Name,Asset Type,Model No.,Manufacturer,Serial No.,Purchase Date,QR Code,Parent Asset,Assigned To,Vendors,Asset Code,Parts,URL 1,URL Label 1,URL 2,URL Label 2,Warranty Expiry Date,Life Expectancy (in months),Purchase Cost,Replacement Cost,Salvage Value\n",
@@ -15,6 +16,8 @@ const templates: Record<string, string> = {
 };
 
 export async function GET(_request: Request, { params }: { params: Promise<{ type: string }> }) {
+  const { error } = await requireUser();
+  if (error) return error;
   const { type } = await params;
   const body = templates[type] ?? templates.assets;
   return new NextResponse(body, {

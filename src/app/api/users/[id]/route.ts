@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "@/lib/api-response";
+import { requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -20,6 +21,8 @@ const schema = z.object({
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { error } = await requirePermission("users.manage");
+    if (error) return error;
     const { id } = await params;
     const input = schema.parse(await request.json());
     const team = input.teamCode ? await prisma.team.findUnique({ where: { code: input.teamCode } }) : null;
@@ -47,6 +50,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { error } = await requirePermission("users.manage");
+    if (error) return error;
     const { id } = await params;
     const user = await prisma.user.findUnique({ where: { id } });
     if (user?.email === "admin@cafm.local") {

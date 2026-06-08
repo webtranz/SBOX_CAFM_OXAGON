@@ -4,7 +4,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      DATABASE_URL: postgresql://cafm:cafm_password@db:5432/cafm?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cafm}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-cafm}?schema=public
       NEXT_PUBLIC_APP_NAME: BrightWorks CAFM
     depends_on:
       db:
@@ -13,9 +13,9 @@ services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: cafm
-      POSTGRES_USER: cafm
-      POSTGRES_PASSWORD: cafm_password
+      POSTGRES_DB: ${POSTGRES_DB:-cafm}
+      POSTGRES_USER: ${POSTGRES_USER:-cafm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - cafm_postgres:/var/lib/postgresql/data
     healthcheck:
