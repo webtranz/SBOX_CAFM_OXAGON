@@ -197,6 +197,8 @@ model Site {
   areaSqm   Int
   buildings Building[]
   assets    Asset[]
+
+  @@unique([name, city, country])
 }
 
 model Building {
@@ -221,6 +223,8 @@ model Space {
   occupancy  Int
   buildingId String
   building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, floor, name])
 }
 
 model Asset {
@@ -290,11 +294,14 @@ model DocumentUpload {
   checksum    String
   uploadedBy  String?
   createdAt   DateTime @default(now())
+
+  @@unique([category, assetTag, checksum])
+  @@index([checksum])
 }
 
 model ServiceRequest {
   id          String     @id @default(cuid())
-  ticketNo    String     @unique
+  ticketNo    String     @unique(map: "service_requests_ticket_no_unique")
   title       String
   category    String
   departmentCode String?
@@ -321,7 +328,7 @@ model ServiceRequest {
 
 model WorkOrder {
   id               String          @id @default(cuid())
-  woNo             String          @unique
+  woNo             String          @unique(map: "work_orders_wo_no_unique")
   title            String
   type             String
   assetType        String?
@@ -378,7 +385,7 @@ model Location {
 
 model JobPlan {
   id           String   @id @default(cuid())
-  code         String   @unique
+  code         String   @unique(map: "job_plans_code_unique")
   name         String
   assetType    String
   departmentCode String?
@@ -389,11 +396,13 @@ model JobPlan {
   safetyNotes  String
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
+
+  @@unique([name, assetType, departmentCode, serviceCode], map: "job_plans_scope_unique")
 }
 
 model PreventiveMaintenance {
   id           String   @id @default(cuid())
-  code         String   @unique
+  code         String   @unique(map: "ppm_plans_code_unique")
   name         String
   assetTag     String
   frequency    String
@@ -401,6 +410,8 @@ model PreventiveMaintenance {
   durationHrs  Decimal  @db.Decimal(6, 2)
   checklist    String
   active       Boolean  @default(true)
+
+  @@unique([assetTag, frequency, name], map: "ppm_plans_asset_frequency_name_unique")
 }
 
 model InventoryItem {
@@ -433,7 +444,7 @@ model Vendor {
   category  String
   rating    Decimal  @db.Decimal(3, 2)
   contact   String
-  email     String
+  email     String   @unique
   phone     String
   contracts Contract[]
 }
@@ -448,6 +459,8 @@ model Contract {
   value       Decimal  @db.Decimal(14, 2)
   slaTarget   String
   vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, title])
 }
 
 model Inspection {
@@ -503,6 +516,8 @@ model Meter {
   assetId   String?
   asset     Asset?   @relation(fields: [assetId], references: [id])
   readAt    DateTime @default(now())
+
+  @@unique([assetId, name, type])
 }
 
 model IotAlert {
@@ -803,6 +818,7 @@ model HousingApproval {
 
   @@index([bookingId, step])
   @@index([status, level])
+  @@unique([bookingId, level, step])
 }
 
 model HousingNotification {
