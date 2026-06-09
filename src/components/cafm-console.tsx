@@ -568,14 +568,14 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
 
   async function checkHealth() {
     const response = await fetch("/api/health", { cache: "no-store" });
-    const result = await response.json();
+    const result = await safeJson(response);
     setHealth(result);
   }
 
   async function refreshData() {
     const response = await fetch("/api/operating-data", { cache: "no-store" });
     if (response.ok) {
-      setRecords(await response.json());
+      setRecords(await safeJson(response));
     }
     await checkHealth();
   }
@@ -639,14 +639,19 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
 
   async function bulkUpload(formData: FormData) {
     setSaving(true);
-    const response = await fetch("/api/bulk-upload", {
-      method: "POST",
-      body: formData,
-    });
-    const result = await response.json();
-    setToast(cleanMessage(result.message ?? (response.ok ? "Bulk upload complete." : "Bulk upload failed.")));
-    await refreshData();
-    setSaving(false);
+    try {
+      const response = await fetch("/api/bulk-upload", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await safeJson(response);
+      setToast(cleanMessage(result.message ?? (response.ok ? "Bulk upload complete." : "Bulk upload failed.")));
+      if (response.ok) await refreshData();
+    } catch (error) {
+      setToast(cleanMessage(error instanceof Error ? error.message : "Bulk upload failed."));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function patchRecord(path: string, body: Record<string, unknown>, successLabel: string) {
@@ -687,15 +692,20 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
 
   async function convertRequestToWorkOrder(id: string, assignment: { assignedTeamCode?: string; assignedToEmail?: string; assetTag?: string } = {}) {
     setSaving(true);
-    const response = await fetch(`/api/service-requests/${id}/convert-work-order`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(assignment),
-    });
-    const result = await response.json();
-    setToast(response.ok ? `Work order ${result.woNo} created from request.` : cleanMessage(result.message ?? "Conversion failed."));
-    if (response.ok) await refreshData();
-    setSaving(false);
+    try {
+      const response = await fetch(`/api/service-requests/${id}/convert-work-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(assignment),
+      });
+      const result = await safeJson(response);
+      setToast(response.ok ? `Work order ${result.woNo} created from request.` : cleanMessage(result.message ?? "Conversion failed."));
+      if (response.ok) await refreshData();
+    } catch (error) {
+      setToast(cleanMessage(error instanceof Error ? error.message : "Conversion failed."));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function logout() {
@@ -1000,15 +1010,20 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               setToast={(message) => setToast(cleanMessage(message))}
               saveRolePermissions={async (role, permissionCodes) => {
                 setSaving(true);
-                const response = await fetch("/api/role-permissions", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ role, permissionCodes }),
-                });
-                const result = await response.json();
-                setToast(response.ok ? "Role permissions updated." : cleanMessage(result.message ?? "Permission update failed."));
-                await refreshData();
-                setSaving(false);
+                try {
+                  const response = await fetch("/api/role-permissions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ role, permissionCodes }),
+                  });
+                  const result = await safeJson(response);
+                  setToast(response.ok ? "Role permissions updated." : cleanMessage(result.message ?? "Permission update failed."));
+                  if (response.ok) await refreshData();
+                } catch (error) {
+                  setToast(cleanMessage(error instanceof Error ? error.message : "Permission update failed."));
+                } finally {
+                  setSaving(false);
+                }
               }}
             />
           )}
@@ -1243,7 +1258,7 @@ function Assets({
         });
         const response = await fetch(`/api/assets/filter?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         if (response.ok) {
-          const result = await response.json();
+          const result = await safeJson(response);
           setAssetRowsSource((current) => page === 1 ? result.assets ?? [] : [...current, ...(result.assets ?? [])]);
           setAssetTotal(Number(result.total ?? result.assets?.length ?? 0));
         }
@@ -2538,20 +2553,27 @@ function ServiceRequestForm({ title, request, services, categories, departments,
     const name = categoryName.trim();
     if (!name) return;
     setCategorySaving(true);
-    const response = await fetch("/api/asset-categories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: categoryCode.trim(), name, type: "Service Request", defaultLifeYrs: 5, description: `Request category ${name}` }),
-    });
-    const result = await response.json();
-    if (response.ok) {
-      setLocalCategories((current) => [...current.filter((item) => item.code !== result.code), result]);
-      setCategoryValue(result.name);
-      setCategoryName("");
-      setCategoryCode("");
-      setShowCategoryCreate(false);
+    try {
+      const response = await fetch("/api/asset-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: categoryCode.trim(), name, type: "Service Request", defaultLifeYrs: 5, description: `Request category ${name}` }),
+      });
+      const result = await safeJson(response);
+      if (response.ok) {
+        setLocalCategories((current) => [...current.filter((item) => item.code !== result.code), result]);
+        setCategoryValue(result.name);
+        setCategoryName("");
+        setCategoryCode("");
+        setShowCategoryCreate(false);
+      } else {
+        console.error(cleanMessage(result.message ?? "Unable to create category."));
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setCategorySaving(false);
     }
-    setCategorySaving(false);
   }
 
   return (
@@ -2708,46 +2730,53 @@ function RequestPreviewModal({
     const name = assetName.trim() || request.title || "Request Asset";
     const tag = assetTag.trim() || `REQ-${request.ticketNo || Date.now()}`;
     setAssetSaving(true);
-    const response = await fetch("/api/assets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tag,
-        name,
-        assetDescription: name,
-        additionalDescription: request.description || "",
-        category: request.category || "General",
-        assetGroup: request.category || "General",
-        system: request.serviceCode || request.category || "General",
-        criticality: request.priority || "MEDIUM",
-        status: "ACTIVE",
-        serialNumber: tag,
-        manufacturer: "Unknown",
-        model: "Request-created asset",
-        purchaseCost: 0,
-        salvageValue: 0,
-        conditionScore: 80,
-        departmentCode: request.departmentCode || assignment.assignedTeamCode || "",
-        assignedTeamCode: assignment.assignedTeamCode || request.assignedTeamCode || "",
-        assignedSupervisorEmail: request.assignedSupervisorEmail || "",
-        siteCode: locationParts[0] || "",
-        buildingCode: locationParts[1] || "",
-        floor: locationParts[2] || "",
-        room: locationParts[3] || request.location || "",
-        remarks: `Created by supervisor from service request ${request.ticketNo}.`,
-      }),
-    });
-    const result = await response.json();
-    if (response.ok) {
-      const created = { ...result, site: { name: result.siteCode }, building: { name: result.buildingCode, code: result.buildingCode } };
-      setLocalAssets((current) => [created, ...current.filter((asset) => asset.tag !== created.tag)]);
-      onAssignAsset(created.tag);
-      if (created.assignedTeamCode && !assignment.assignedTeamCode) onAssignTeam(created.assignedTeamCode);
-      setAssetName("");
-      setAssetTag("");
-      setShowAssetCreate(false);
+    try {
+      const response = await fetch("/api/assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tag,
+          name,
+          assetDescription: name,
+          additionalDescription: request.description || "",
+          category: request.category || "General",
+          assetGroup: request.category || "General",
+          system: request.serviceCode || request.category || "General",
+          criticality: request.priority || "MEDIUM",
+          status: "ACTIVE",
+          serialNumber: tag,
+          manufacturer: "Unknown",
+          model: "Request-created asset",
+          purchaseCost: 0,
+          salvageValue: 0,
+          conditionScore: 80,
+          departmentCode: request.departmentCode || assignment.assignedTeamCode || "",
+          assignedTeamCode: assignment.assignedTeamCode || request.assignedTeamCode || "",
+          assignedSupervisorEmail: request.assignedSupervisorEmail || "",
+          siteCode: locationParts[0] || "",
+          buildingCode: locationParts[1] || "",
+          floor: locationParts[2] || "",
+          room: locationParts[3] || request.location || "",
+          remarks: `Created by supervisor from service request ${request.ticketNo}.`,
+        }),
+      });
+      const result = await safeJson(response);
+      if (response.ok) {
+        const created = { ...result, site: { name: result.siteCode }, building: { name: result.buildingCode, code: result.buildingCode } };
+        setLocalAssets((current) => [created, ...current.filter((asset) => asset.tag !== created.tag)]);
+        onAssignAsset(created.tag);
+        if (created.assignedTeamCode && !assignment.assignedTeamCode) onAssignTeam(created.assignedTeamCode);
+        setAssetName("");
+        setAssetTag("");
+        setShowAssetCreate(false);
+      } else {
+        console.error(cleanMessage(result.message ?? "Unable to create asset."));
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setAssetSaving(false);
     }
-    setAssetSaving(false);
   }
 
   return (
@@ -3358,11 +3387,20 @@ function ImageUploadField({ name, defaultValue = "" }: { name: string; defaultVa
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append("files", file));
     setUploading(true);
-    const response = await fetch("/api/uploads", { method: "POST", body: formData });
-    const result = await response.json();
-    const next = [...urls, ...(result.urls ?? [])].join("\n");
-    setValue(next);
-    setUploading(false);
+    try {
+      const response = await fetch("/api/uploads", { method: "POST", body: formData });
+      const result = await safeJson(response);
+      if (response.ok) {
+        const next = [...urls, ...(result.urls ?? [])].join("\n");
+        setValue(next);
+      } else {
+        console.error(cleanMessage(result.message ?? "Upload failed."));
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -4635,16 +4673,21 @@ function DocumentUploadForm({ assets, category, refreshData }: { assets: any[]; 
     formData.set("assetTag", assetTag);
     Array.from(files).forEach((file) => formData.append("files", file));
     setUploading(true);
-    const response = await fetch("/api/document-uploads", { method: "POST", body: formData });
-    const result = await response.json();
-    setMessage(response.ok ? "File uploaded." : cleanMessage(result.message || "Upload failed."));
-    if (response.ok) {
-      await refreshData();
-      setFiles(null);
-      event.currentTarget.reset();
-      setAssetTag("");
+    try {
+      const response = await fetch("/api/document-uploads", { method: "POST", body: formData });
+      const result = await safeJson(response);
+      setMessage(response.ok ? "File uploaded." : cleanMessage(result.message || "Upload failed."));
+      if (response.ok) {
+        await refreshData();
+        setFiles(null);
+        event.currentTarget.reset();
+        setAssetTag("");
+      }
+    } catch (error) {
+      setMessage(cleanMessage(error instanceof Error ? error.message : "Upload failed."));
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   }
 
   return (
@@ -5011,7 +5054,7 @@ function Locations({ locations, submitLocation, deleteLocation, isAdmin, saving 
         });
         const response = await fetch(`/api/locations?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         if (response.ok) {
-          const result = await response.json();
+          const result = await safeJson(response);
           setLocationRowsSource((current) => page === 1 ? result.locations ?? [] : [...current, ...(result.locations ?? [])]);
           setLocationTotal(Number(result.total ?? result.locations?.length ?? 0));
         }
@@ -6293,7 +6336,7 @@ function HousingReportsWorkspace({ rooms, bookings }: { rooms: any[]; bookings: 
   };
   async function preview(nextType = type) {
     const response = await fetch(urlFor(nextType, "preview", filters), { cache: "no-store" });
-    const result = await response.json();
+    const result = await safeJson(response);
     setRows(result.rows ?? []);
   }
   function urlFor(nextType: string, format: string, nextFilters = filters) {
@@ -6879,7 +6922,7 @@ function Reports() {
 
   async function preview(nextType = type) {
     const response = await fetch(reportUrl(nextType, "preview"), { cache: "no-store" });
-    const result = await response.json();
+    const result = await safeJson(response);
     setRows(result.rows ?? []);
     setKpis(result.kpis ?? null);
   }
