@@ -80,6 +80,12 @@ async function main() {
        OR "primarySystem" IS NULL;
   `);
   console.log("Asset import heading columns are ready.");
+
+  await runSql(`
+    DELETE FROM "AuditLog"
+    WHERE "createdAt" < now() - interval '30 days';
+  `);
+  console.log("Audit logs older than 30 days were purged.");
 }
 
 main()

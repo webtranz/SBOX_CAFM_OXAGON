@@ -6931,25 +6931,75 @@ function Reports() {
 
 function AuditLogs({ logs }: { logs: any[] }) {
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
+  const [filters, setFilters] = useState({ user: "", dateFrom: "", dateTo: "", role: "", action: "", recordType: "" });
+  const filteredLogs = useMemo(() => logs.filter((log) => auditLogMatchesFilters(log, filters)), [logs, filters]);
+  const groupedLogs = useMemo(() => groupAuditLogsByDate(filteredLogs), [filteredLogs]);
+  const roles = useMemo(() => uniqueSorted(logs.map((log) => log.role)), [logs]);
+  const actions = useMemo(() => uniqueSorted(logs.map((log) => log.action)), [logs]);
+  const recordTypes = useMemo(() => uniqueSorted(logs.map((log) => log.entity)), [logs]);
+  const auditExportUrl = (format: string) => {
+    const params = new URLSearchParams({ type: "audit-logs", format });
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    return `/api/reports?${params.toString()}`;
+  };
 
   return (
     <Panel title="Audit Logs" icon={Activity}>
-      <ReportButtons type="audit-logs" label="Audit report" />
-      <DataTable
-        rows={logs}
-        columns={[
-          ["createdAt", "Time"],
-          ["actorName", "User"],
-          ["role", "Role"],
-          ["action", "Action"],
-          ["entity", "Record Type"],
-          ["entityId", "Record ID"],
-          ["details", "Details"],
-        ]}
-        renderCell={(row, key) => key === "details" ? <AuditDetailsButton log={row} onOpen={() => setSelectedLog(row)} /> : undefined}
-      />
+      <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-6">
+        <input value={filters.user} onChange={(event) => setFilters((current) => ({ ...current, user: event.target.value }))} placeholder="User" className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon" />
+        <input type="date" value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon" />
+        <input type="date" value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon" />
+        <AuditFilterSelect label="Role" value={filters.role} options={roles} onChange={(role) => setFilters((current) => ({ ...current, role }))} />
+        <AuditFilterSelect label="Action" value={filters.action} options={actions} onChange={(action) => setFilters((current) => ({ ...current, action }))} />
+        <AuditFilterSelect label="Record Type" value={filters.recordType} options={recordTypes} onChange={(recordType) => setFilters((current) => ({ ...current, recordType }))} />
+      </div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-bold text-slate-600">{filteredLogs.length} logs shown / {logs.length} retained for 30 days</p>
+        <div className="flex flex-wrap gap-2">
+          <a className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white" href={auditExportUrl("csv")}>CSV</a>
+          <a className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white" href={auditExportUrl("excel")}>Excel</a>
+          <a className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white" href={auditExportUrl("html")} target="_blank" rel="noreferrer">Separate Tab</a>
+          <button type="button" onClick={() => setFilters({ user: "", dateFrom: "", dateTo: "", role: "", action: "", recordType: "" })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Reset</button>
+        </div>
+      </div>
+      <div className="grid gap-4">
+        {groupedLogs.map((group) => (
+          <section key={group.date} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-black text-slate-800">{group.label}</h4>
+              <span className="rounded-full bg-lagoon/10 px-3 py-1 text-xs font-black text-lagoon">{group.rows.length} logs</span>
+            </div>
+            <DataTable
+              rows={group.rows}
+              columns={[
+                ["logKey", "Log ID"],
+                ["createdAt", "Time"],
+                ["actorName", "User"],
+                ["role", "Role"],
+                ["action", "Action"],
+                ["entity", "Record Type"],
+                ["entityId", "Record ID"],
+                ["details", "Details"],
+              ]}
+              renderCell={(row, key) => key === "details" ? <AuditDetailsButton log={row} onOpen={() => setSelectedLog(row)} /> : undefined}
+            />
+          </section>
+        ))}
+        {!groupedLogs.length && <p className="rounded-lg bg-slate-50 p-4 text-sm font-bold text-slate-500">No audit logs match the selected filters.</p>}
+      </div>
       {selectedLog && <AuditDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} />}
     </Panel>
+  );
+}
+
+function AuditFilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon">
+      <option value="">{label}</option>
+      {options.map((option) => <option key={option} value={option}>{option}</option>)}
+    </select>
   );
 }
 
@@ -6974,11 +7024,13 @@ function AuditDetailsModal({ log, onClose }: { log: any; onClose: () => void }) 
   const payload = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, any> : null;
   const details = payload?.details ?? parsed;
   const actor = payload?.actor;
+  const bulkEntries = auditBulkEntries(details);
 
   return (
     <RequestModalShell title={`Audit Details / ${log.action || "Activity"}`} onClose={onClose}>
       <div className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-3">
+          <PreviewField label="Log ID" value={log.logKey || log.id} />
           <PreviewField label="Action" value={log.action} />
           <PreviewField label="Record Type" value={log.entity} />
           <PreviewField label="Record ID" value={log.entityId} />
@@ -6986,6 +7038,15 @@ function AuditDetailsModal({ log, onClose }: { log: any; onClose: () => void }) 
           <PreviewField label="User" value={actor?.name || log.actorName} />
           <PreviewField label="Role" value={actor?.role || log.role} />
         </div>
+        {bulkEntries.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-lagoon/20 bg-lagoon/5 p-3">
+            <p className="text-sm font-black text-lagoon">{bulkEntries.length} bulk upload row entries recorded</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => downloadBulkAuditEntries(log, bulkEntries)} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Export Excel</button>
+              <button type="button" onClick={() => openBulkAuditEntriesTab(log, bulkEntries)} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white">Open Separate Tab</button>
+            </div>
+          </div>
+        )}
         <AuditFriendlyDetails value={details} />
       </div>
     </RequestModalShell>
@@ -7103,6 +7164,91 @@ function formatAuditScalar(value: unknown) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string" && isDateLikeString(value)) return formatDateCell(value);
   return String(value);
+}
+
+function auditLogMatchesFilters(log: any, filters: { user: string; dateFrom: string; dateTo: string; role: string; action: string; recordType: string }) {
+  if (filters.user && !String(log.actorName || "").toLowerCase().includes(filters.user.toLowerCase())) return false;
+  if (filters.role && log.role !== filters.role) return false;
+  if (filters.action && log.action !== filters.action) return false;
+  if (filters.recordType && log.entity !== filters.recordType) return false;
+  const date = auditDate(log.createdAt);
+  if (filters.dateFrom && date < filters.dateFrom) return false;
+  if (filters.dateTo && date > filters.dateTo) return false;
+  return true;
+}
+
+function groupAuditLogsByDate(logs: any[]) {
+  const groups = new Map<string, any[]>();
+  logs.forEach((log) => {
+    const key = auditDate(log.createdAt);
+    groups.set(key, [...(groups.get(key) ?? []), log]);
+  });
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([date, rows]) => ({ date, label: auditDateLabel(date), rows }));
+}
+
+function auditDate(value: unknown) {
+  const date = new Date(String(value || ""));
+  if (Number.isNaN(date.getTime())) return String(value || "").slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
+function auditDateLabel(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value || "Unknown date";
+  return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+}
+
+function uniqueSorted(values: unknown[]) {
+  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+function auditBulkEntries(details: unknown) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return [];
+  const entries = (details as Record<string, any>).entries;
+  return Array.isArray(entries) ? entries : [];
+}
+
+function bulkAuditRows(entries: any[]) {
+  return entries.map((entry) => ({
+    row: entry.row,
+    status: entry.status,
+    module: entry.module,
+    action: entry.action,
+    recordType: entry.recordType,
+    recordKey: entry.recordKey,
+    recordId: entry.recordId,
+    displayName: entry.displayName,
+    message: entry.message || "",
+    source: JSON.stringify(entry.source || {}),
+  }));
+}
+
+function downloadBulkAuditEntries(log: any, entries: any[]) {
+  const rows = bulkAuditRows(entries);
+  const html = auditEntriesHtml(log, rows);
+  const blob = new Blob([html], { type: "application/vnd.ms-excel" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${log.logKey || "bulk-upload-audit"}.xls`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function openBulkAuditEntriesTab(log: any, entries: any[]) {
+  const rows = bulkAuditRows(entries);
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) return;
+  win.document.write(auditEntriesHtml(log, rows));
+  win.document.close();
+}
+
+function auditEntriesHtml(log: any, rows: Record<string, unknown>[]) {
+  const columns = Object.keys(rows[0] || { row: "", status: "", module: "", action: "", recordType: "", recordKey: "", recordId: "", displayName: "", message: "", source: "" });
+  const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char] || char));
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escape(log.logKey || "Bulk Upload Audit")}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left;vertical-align:top}th{background:#f1f5f9}.success{color:#047857;font-weight:700}.failed{color:#dc2626;font-weight:700}</style></head><body><h1>${escape(log.logKey || "Bulk Upload Audit")}</h1><p>${escape(log.action)} / ${escape(log.actorName)} / ${escape(formatDateCell(log.createdAt))}</p><table><thead><tr>${columns.map((column) => `<th>${escape(friendlyAuditLabel(column))}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((column) => `<td class="${column === "status" ? String(row[column]).toLowerCase() : ""}">${escape(row[column])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
 }
 
 function Template({ type, title, value }: { type: string; title: string; value: string }) {

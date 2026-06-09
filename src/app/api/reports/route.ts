@@ -43,6 +43,10 @@ function reportFilters(url: URL) {
     floor: url.searchParams.get("floor") || "",
     room: url.searchParams.get("room") || "",
     status: url.searchParams.get("status") || "",
+    user: url.searchParams.get("user") || "",
+    role: url.searchParams.get("role") || "",
+    action: url.searchParams.get("action") || "",
+    recordType: url.searchParams.get("recordType") || "",
   };
 }
 
@@ -170,8 +174,18 @@ async function reportRows(type: string, filters: ReturnType<typeof reportFilters
     return rows.map((row) => ({ source: row.source, assetTag: row.assetTag, severity: row.severity, message: row.message, status: row.status, detectedAt: dateValue(row.detectedAt) }));
   }
   if (type === "audit-logs") {
-    const rows = await prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
-    return rows.map((row) => ({ time: dateValue(row.createdAt), actorName: row.actorName, role: row.role, action: row.action, entity: row.entity, entityId: row.entityId, details: row.details }));
+    const auditRetentionCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rows = await prisma.auditLog.findMany({ where: { createdAt: { gte: auditRetentionCutoff } }, orderBy: { createdAt: "desc" } });
+    return rows
+      .map((row) => ({ logKey: row.logKey, time: dateValue(row.createdAt), actorName: row.actorName, role: row.role, action: row.action, entity: row.entity, entityId: row.entityId, details: row.details }))
+      .filter((row) => {
+        if (filters.user && !String(row.actorName).toLowerCase().includes(filters.user.toLowerCase())) return false;
+        if (filters.role && row.role !== filters.role) return false;
+        if (filters.action && row.action !== filters.action) return false;
+        if (filters.recordType && row.entity !== filters.recordType) return false;
+        if ((filters.dateFrom || filters.dateTo) && !rowMatchesDate(row, filters.dateFrom, filters.dateTo)) return false;
+        return true;
+      });
   }
   const rows = await prisma.asset.findMany({ include: { building: true, site: true }, orderBy: { tag: "asc" } });
   return rows.map((row) => ({

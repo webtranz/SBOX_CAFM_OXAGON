@@ -561,6 +561,7 @@ model IotAlert {
 
 model AuditLog {
   id        String   @id @default(cuid())
+  logKey    String   @unique
   actorId   String?
   actorName String
   role      String
@@ -569,6 +570,12 @@ model AuditLog {
   entityId  String
   details   String?
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorName])
+  @@index([role])
+  @@index([action])
+  @@index([entity])
 }
 
 model HousingProperty {
