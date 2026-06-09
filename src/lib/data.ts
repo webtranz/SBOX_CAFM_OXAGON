@@ -12,7 +12,7 @@ type OperatingUser = {
 
 function roleKind(user: OperatingUser) {
   const role = String(user?.role ?? "").toLowerCase();
-  if (role === "admin" || role === "administrator" || role.includes("super admin") || role.includes("system admin")) return "admin";
+  if (role === "admin" || role.includes("super admin")) return "admin";
   if (role.includes("supervisor")) return "supervisor";
   if (role.includes("technician") || role.includes("service team")) return "technician";
   if (role.includes("read") || role.includes("viewer") || role.includes("view only")) return "readonly";
@@ -29,7 +29,6 @@ export async function getOperatingData(user: OperatingUser = null) {
   }
 
   try {
-    const auditRetentionCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const kind = roleKind(user);
     const departmentsForUser = departmentValues(user);
     const teamCode = user?.team?.code;
@@ -103,11 +102,7 @@ export async function getOperatingData(user: OperatingUser = null) {
       prisma.location.findMany({ orderBy: [{ code: "asc" }], take: 100 }),
       prisma.jobPlan.findMany({ where: visibleJobPlanWhere, orderBy: { code: "asc" } }),
       prisma.role.findMany({ orderBy: { name: "asc" } }),
-      prisma.auditLog.findMany({
-        where: { createdAt: { gte: auditRetentionCutoff } },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, logKey: true, actorId: true, actorName: true, role: true, action: true, entity: true, entityId: true, createdAt: true },
-      }),
+      prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
       prisma.complianceCertificate.findMany({ orderBy: [{ expiryDate: "asc" }, { certificateNo: "asc" }] }),
       prisma.documentUpload.findMany({ orderBy: { createdAt: "desc" } }),
       prisma.housingProperty.findMany({ orderBy: { name: "asc" } }),

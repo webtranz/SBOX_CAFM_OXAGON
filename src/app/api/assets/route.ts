@@ -74,14 +74,6 @@ const schema = z.object({
   conditionScore: z.coerce.number().min(0).max(100).optional(),
 });
 
-async function validDepartmentCode(code: string | undefined) {
-  const departmentCode = String(code || "").trim();
-  if (!departmentCode) throw new Error("DEPARTMENT is required and must match Services -> Department Codes.");
-  const department = await prisma.department.findUnique({ where: { code: departmentCode } });
-  if (!department) throw new Error(`DEPARTMENT ${departmentCode} is not defined under Services -> Department Codes.`);
-  return departmentCode;
-}
-
 export async function POST(request: Request) {
   try {
     const { error, user } = await requirePermission("assets.manage");
@@ -92,7 +84,6 @@ export async function POST(request: Request) {
     const location = input.locationCode ? await prisma.location.findUnique({ where: { code: input.locationCode } }) : null;
     const name = input.name || input.equipmentDesc || input.assetDescription || `Asset ${count + 1}`;
     const category = input.category || input.categoryDesc || input.assetGroup || input.classCode || "General";
-    const departmentCode = await validDepartmentCode(input.departmentCode);
     const criticality = ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(input.criticality || "") ? input.criticality as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" : "MEDIUM";
     const outOfService = input.outOfService ?? false;
     const status = outOfService ? "RETIRED" : "ACTIVE";
@@ -139,7 +130,7 @@ export async function POST(request: Request) {
         primarySystem: input.primarySystem || null,
         additionalNote: input.additionalNote || null,
         parentAsset: input.parentAsset || "TOP LEVEL",
-        departmentCode,
+        departmentCode: input.departmentCode || null,
         assignedTeamCode: input.assignedTeamCode || null,
         assignedSupervisorEmail: input.assignedSupervisorEmail || null,
         remarks: input.remarks || null,

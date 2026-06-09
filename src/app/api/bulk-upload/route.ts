@@ -7,7 +7,6 @@ import { csvResponse, parseCsv } from "@/lib/csv";
 import { prisma } from "@/lib/prisma";
 
 type Row = Record<string, string>;
-type ImportResult = { action: string; recordType: string; recordId?: string; recordKey?: string; displayName?: string };
 
 export async function POST(request: Request) {
   try {
@@ -23,19 +22,14 @@ export async function POST(request: Request) {
 
     const rows = parseCsv(await file.text());
     const failed: Array<{ row: number; message: string }> = [];
-    const entries: Array<{ row: number; status: "SUCCESS" | "FAILED"; module: string; action: string; recordType: string; recordId?: string; recordKey?: string; displayName?: string; message?: string; source: Row }> = [];
     let created = 0;
 
     for (const [index, row] of rows.entries()) {
-      const rowNumber = index + 2;
       try {
-        const imported = await importRow(module, row);
+        await importRow(module, row);
         created += 1;
-        entries.push({ row: rowNumber, status: "SUCCESS", module, ...imported, source: row });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Import failed";
-        failed.push({ row: rowNumber, message });
-        entries.push({ row: rowNumber, status: "FAILED", module, action: "SKIPPED", recordType: module || "unknown", recordKey: rowIdentifier(module, row), displayName: rowDisplayName(row), message, source: row });
+        failed.push({ row: index + 2, message: error instanceof Error ? error.message : "Import failed" });
       }
     }
 
@@ -53,7 +47,6 @@ export async function POST(request: Request) {
         created,
         failed,
         result,
-        entries,
       },
     });
     return NextResponse.json(result, { status: failed.length ? 207 : 201 });
@@ -62,7 +55,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function importRow(module: string, row: Row): Promise<ImportResult> {
+async function importRow(module: string, row: Row) {
   if (module === "assets") return importAsset(row);
   if (module === "inventory") return importInventory(row);
   if (module === "requests") return importRequest(row);
@@ -76,25 +69,6 @@ async function importRow(module: string, row: Row): Promise<ImportResult> {
   if (module === "locations") return importLocation(row);
   if (module === "jobPlans") return importJobPlan(row);
   throw new Error(`Unsupported module: ${module}`);
-}
-
-function importResult(recordType: string, action: string, record: { id?: string; code?: string; tag?: string; sku?: string; ticketNo?: string; woNo?: string; name?: string; title?: string }, fallbackKey = ""): ImportResult {
-  const recordKey = record.tag || record.sku || record.ticketNo || record.woNo || record.code || fallbackKey || record.id;
-  return {
-    action,
-    recordType,
-    recordId: record.id,
-    recordKey,
-    displayName: record.name || record.title || recordKey,
-  };
-}
-
-function rowIdentifier(module: string, row: Row) {
-  return value(row, "EQUIPMENTNO", "tag", "ASSET NUMBER", "sku", "ticketNo", "woNo", "companyId", "code", "Location") || module || "unknown";
-}
-
-function rowDisplayName(row: Row) {
-  return value(row, "EQUIPMENTDESC", "name", "title", "Asset Name", "Asset Description", "Description") || rowIdentifier("", row);
 }
 
 async function firstSite() {
@@ -115,7 +89,7 @@ async function importAsset(row: Row) {
   const system = value(row, "PRIMARYSYSTEM", "system", "Entity Name", "Asset Type") || category;
   const floor = value(row, "floor", "FLOOR") || location?.floor || "Unassigned";
   const room = locationCode || value(row, "room", "ROOM", "ROOM ") || location?.code || "Unassigned";
-  const departmentCode = await validAssetDepartmentCode(value(row, "DEPARTMENT", "departmentCode", "Department", "Assigned To"));
+  const departmentCode = value(row, "DEPARTMENT", "departmentCode", "Department", "Assigned To") || "";
   const cost = number(value(row, "EQUIPMENTVALUE", "purchaseCost", "Purchase Cost"), 0);
   const replacementCost = number(value(row, "replacementCost", "Replacement Cost"), cost);
   const lifeMonths = integer(value(row, "SERVICELIFE", "Life Expectancy (in months)", "lifeExpectancyMonths"), 96);
@@ -203,13 +177,11 @@ async function importAsset(row: Row) {
       actor: "Admin",
     },
   });
-  return importResult("asset", "UPSERT", asset, tag);
 }
 
 async function importInventory(row: Row) {
-  const sku = required(row, "sku");
-  const item = await prisma.inventoryItem.upsert({
-    where: { sku },
+  await prisma.inventoryItem.upsert({
+    where: { sku: required(row, "sku") },
     update: {
       name: required(row, "name"),
       category: row.category || "General",
@@ -221,7 +193,7 @@ async function importInventory(row: Row) {
       location: row.location || "Central Store",
     },
     create: {
-      sku,
+      sku: required(row, "sku"),
       name: required(row, "name"),
       category: row.category || "General",
       unit: row.unit || "pcs",
@@ -232,13 +204,12 @@ async function importInventory(row: Row) {
       location: row.location || "Central Store",
     },
   });
-  return importResult("inventory_item", "UPSERT", item, sku);
 }
 
 async function importRequest(row: Row) {
   const count = await prisma.serviceRequest.count();
   const slaHours = integer(row.slaHours, priority(row.priority) === "CRITICAL" ? 4 : 24);
-  const request = await prisma.serviceRequest.create({
+  await prisma.serviceRequest.create({
     data: {
       ticketNo: row.ticketNo || `SR-${String(count + 24001).padStart(5, "0")}`,
       title: required(row, "title"),
@@ -258,13 +229,12 @@ async function importRequest(row: Row) {
       description: row.description || row.title || "Bulk uploaded request",
     },
   });
-  return importResult("service_request", "CREATE", request, request.ticketNo);
 }
 
 async function importWorkOrder(row: Row) {
   const count = await prisma.workOrder.count();
   const asset = row.assetTag ? await prisma.asset.findUnique({ where: { tag: row.assetTag } }) : null;
-  const workOrder = await prisma.workOrder.create({
+  await prisma.workOrder.create({
     data: {
       woNo: row.woNo || `WO-${String(count + 81001).padStart(5, "0")}`,
       title: required(row, "title"),
@@ -291,80 +261,61 @@ async function importWorkOrder(row: Row) {
       supervisorDecision: row.supervisorDecision || "",
     },
   });
-  return importResult("work_order", "CREATE", workOrder, workOrder.woNo);
 }
 
 async function importTeam(row: Row) {
-  const code = row.departmentCode || required(row, "code");
-  const team = await prisma.team.upsert({
-    where: { code },
+  await prisma.team.upsert({
+    where: { code: row.departmentCode || required(row, "code") },
     update: teamPayload(row),
-    create: { code, ...teamPayload(row) },
+    create: { code: row.departmentCode || required(row, "code"), ...teamPayload(row) },
   });
-  return importResult("team", "UPSERT", team, code);
 }
 
 async function importDepartment(row: Row) {
-  const code = required(row, "code");
-  const department = await prisma.department.upsert({
-    where: { code },
+  await prisma.department.upsert({
+    where: { code: required(row, "code") },
     update: {
       name: required(row, "name"),
       siteLocation: row.siteLocation || "Unassigned",
       description: row.description || "",
     },
     create: {
-      code,
+      code: required(row, "code"),
       name: required(row, "name"),
       siteLocation: row.siteLocation || "Unassigned",
       description: row.description || "",
     },
   });
-  return importResult("department", "UPSERT", department, code);
 }
 
 async function importEmployee(row: Row) {
-  const companyId = required(row, "companyId");
-  const employee = await prisma.employee.upsert({
-    where: { companyId },
+  await prisma.employee.upsert({
+    where: { companyId: required(row, "companyId") },
     update: employeePayload(row),
-    create: { companyId, ...employeePayload(row) },
+    create: { companyId: required(row, "companyId"), ...employeePayload(row) },
   });
-  return importResult("employee", "UPSERT", { ...employee, code: employee.companyId }, companyId);
 }
 
 async function importService(row: Row) {
   const team = row.teamCode ? await prisma.team.findUnique({ where: { code: row.teamCode } }) : null;
-  const code = row.departmentCode || required(row, "code");
-  const service = await prisma.serviceCatalog.upsert({
-    where: { code },
+  await prisma.serviceCatalog.upsert({
+    where: { code: row.departmentCode || required(row, "code") },
     update: servicePayload(row, team?.id),
-    create: { code, ...servicePayload(row, team?.id) },
+    create: { code: row.departmentCode || required(row, "code"), ...servicePayload(row, team?.id) },
   });
-  return importResult("service_catalog", "UPSERT", service, code);
-}
-
-async function validAssetDepartmentCode(code: string | undefined) {
-  const departmentCode = String(code || "").trim();
-  if (!departmentCode) throw new Error("DEPARTMENT is required and must match Services -> Department Codes");
-  const department = await prisma.department.findUnique({ where: { code: departmentCode } });
-  if (!department) throw new Error(`DEPARTMENT ${departmentCode} is not defined under Services -> Department Codes`);
-  return departmentCode;
 }
 
 async function importCategory(row: Row) {
-  const code = required(row, "code");
-  const category = await prisma.assetCategory.upsert({
-    where: { code },
+  await prisma.assetCategory.upsert({
+    where: { code: required(row, "code") },
     update: categoryPayload(row),
-    create: { code, ...categoryPayload(row) },
+    create: { code: required(row, "code"), ...categoryPayload(row) },
   });
-  return importResult("asset_category", "UPSERT", category, code);
 }
 
 async function importInspection(row: Row) {
   const count = await prisma.inspection.count();
-  const inspection = await prisma.inspection.create({
+  await prisma.inspection.create({
     data: {
       code: row.code || `INS-${String(count + 1001).padStart(5, "0")}`,
       title: required(row, "title"),
@@ -377,27 +328,23 @@ async function importInspection(row: Row) {
       findings: row.findings || "No findings recorded.",
     },
   });
-  return importResult("inspection", "CREATE", inspection, inspection.code);
 }
 
 async function importLocation(row: Row) {
   const code = required(row, "code", "Location");
-  const location = await prisma.location.upsert({
+  await prisma.location.upsert({
     where: { code },
     update: locationPayload(row),
     create: { code, ...locationPayload(row) },
   });
-  return importResult("location", "UPSERT", location, code);
 }
 
 async function importJobPlan(row: Row) {
-  const code = required(row, "code");
-  const jobPlan = await prisma.jobPlan.upsert({
-    where: { code },
+  await prisma.jobPlan.upsert({
+    where: { code: required(row, "code") },
     update: jobPlanPayload(row),
-    create: { code, ...jobPlanPayload(row) },
+    create: { code: required(row, "code"), ...jobPlanPayload(row) },
   });
-  return importResult("job_plan", "UPSERT", jobPlan, code);
 }
 
 function teamPayload(row: Row) {

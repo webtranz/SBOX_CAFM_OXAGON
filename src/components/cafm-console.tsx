@@ -347,16 +347,6 @@ function cleanMessage(message: string) {
     .slice(0, 260);
 }
 
-async function safeJson(response: Response) {
-  const text = await response.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
-  }
-}
-
 function bulkModuleFromView(view: string) {
   const map: Record<string, string> = {
     "bulk-assets": "assets",
@@ -499,7 +489,7 @@ function DetailPanel({ title, rows }: { title: string; rows: [string, unknown][]
 
 function dashboardSubtitle(role: string, department?: string | null) {
   const lower = role.toLowerCase();
-  if (lower === "admin" || lower === "administrator" || lower.includes("super admin") || lower.includes("system admin")) {
+  if (lower === "admin" || lower.includes("super admin")) {
     return "Admin dashboard: full visibility for service requests, work orders, PPM, users, roles, reports and analytics.";
   }
   if (lower.includes("supervisor")) {
@@ -516,7 +506,7 @@ function dashboardSubtitle(role: string, department?: string | null) {
 
 function roleKindLabel(role: string) {
   const lower = role.toLowerCase();
-  if (lower === "admin" || lower === "administrator" || lower.includes("super admin") || lower.includes("system admin")) return "admin";
+  if (lower === "admin" || lower.includes("super admin")) return "admin";
   if (lower.includes("supervisor")) return "supervisor";
   if (lower.includes("technician") || lower.includes("service team")) return "technician";
   if (lower.includes("read") || lower.includes("viewer") || lower.includes("view only")) return "readonly";
@@ -544,7 +534,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
   }, [records.rolePermissions, user.role]);
   const isReadOnlyUser = roleKindLabel(user.role) === "readonly";
   const readOnlyModules = new Set(["command", "dashboard", "assets", "work", "ppm", "requests", "reports", "housing", "compliance", "documents", "incidents"]);
-  const can = (permission?: string) => roleKindLabel(user.role) === "admin" || !permission || (!isReadOnlyUser && permissionCodes.has(permission));
+  const can = (permission?: string) => user.role === "Admin" || !permission || (!isReadOnlyUser && permissionCodes.has(permission));
   const canOpenModule = (moduleId: string) => (isReadOnlyUser && readOnlyModules.has(moduleId)) || can(modulePermissions[moduleId]);
   const canViewActive = canOpenModule(active);
   const isAdmin = roleKindLabel(user.role) === "admin";
@@ -568,108 +558,83 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
 
   async function checkHealth() {
     const response = await fetch("/api/health", { cache: "no-store" });
-    const result = await safeJson(response);
+    const result = await response.json();
     setHealth(result);
   }
 
   async function refreshData() {
     const response = await fetch("/api/operating-data", { cache: "no-store" });
     if (response.ok) {
-      setRecords(await safeJson(response));
+      setRecords(await response.json());
     }
     await checkHealth();
   }
 
   async function submitRequest(formData: FormData) {
     setSaving(true);
-    try {
-      const payload = Object.fromEntries(formData.entries());
-      const response = await fetch("/api/service-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await safeJson(response);
-      setToast(response.ok ? `Service request ${result.ticketNo} created and saved.` : cleanMessage(result.message ?? "Service request failed."));
-      if (response.ok) await refreshData();
-    } catch (error) {
-      setToast(cleanMessage(error instanceof Error ? error.message : "Service request failed."));
-    } finally {
-      setSaving(false);
-    }
+    const payload = Object.fromEntries(formData.entries());
+    const response = await fetch("/api/service-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    setToast(response.ok ? `Service request ${result.ticketNo} created and saved.` : cleanMessage(result.message ?? "Service request failed."));
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   async function submitWorkOrder(formData: FormData) {
     setSaving(true);
-    try {
-      const payload = Object.fromEntries(formData.entries());
-      const response = await fetch("/api/work-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await safeJson(response);
-      setToast(response.ok ? `Work order ${result.woNo} created and saved.` : cleanMessage(result.message ?? "Work order failed."));
-      if (response.ok) await refreshData();
-    } catch (error) {
-      setToast(cleanMessage(error instanceof Error ? error.message : "Work order failed."));
-    } finally {
-      setSaving(false);
-    }
+    const payload = Object.fromEntries(formData.entries());
+    const response = await fetch("/api/work-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    setToast(response.ok ? `Work order ${result.woNo} created and saved.` : cleanMessage(result.message ?? "Work order failed."));
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   async function postRecord(path: string, formData: FormData, successLabel: string) {
     setSaving(true);
-    try {
-      const payload = Object.fromEntries(formData.entries());
-      const response = await fetch(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await safeJson(response);
-      setToast(response.ok ? `${successLabel} saved.` : cleanMessage(result.message ?? "Action failed."));
-      if (response.ok) await refreshData();
-    } catch (error) {
-      setToast(cleanMessage(error instanceof Error ? error.message : "Action failed."));
-    } finally {
-      setSaving(false);
-    }
+    const payload = Object.fromEntries(formData.entries());
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    setToast(response.ok ? `${successLabel} saved.` : cleanMessage(result.message ?? "Action failed."));
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   async function bulkUpload(formData: FormData) {
     setSaving(true);
-    try {
-      const response = await fetch("/api/bulk-upload", {
-        method: "POST",
-        body: formData,
-      });
-      const result = await safeJson(response);
-      setToast(cleanMessage(result.message ?? (response.ok ? "Bulk upload complete." : "Bulk upload failed.")));
-      if (response.ok) await refreshData();
-    } catch (error) {
-      setToast(cleanMessage(error instanceof Error ? error.message : "Bulk upload failed."));
-    } finally {
-      setSaving(false);
-    }
+    const response = await fetch("/api/bulk-upload", {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
+    setToast(cleanMessage(result.message ?? (response.ok ? "Bulk upload complete." : "Bulk upload failed.")));
+    await refreshData();
+    setSaving(false);
   }
 
   async function patchRecord(path: string, body: Record<string, unknown>, successLabel: string) {
     setSaving(true);
-    try {
-      const response = await fetch(path, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const result = await safeJson(response);
-      setToast(response.ok ? successLabel : cleanMessage(result.message ?? "Action failed."));
-      if (response.ok) await refreshData();
-    } catch (error) {
-      setToast(cleanMessage(error instanceof Error ? error.message : "Action failed."));
-    } finally {
-      setSaving(false);
-    }
+    const response = await fetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    setToast(response.ok ? successLabel : cleanMessage(result.message ?? "Action failed."));
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   async function updateAsset(id: string, formData: FormData) {
@@ -678,34 +643,24 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
 
   async function deleteRecord(path: string, successLabel: string) {
     setSaving(true);
-    try {
-      const response = await fetch(path, { method: "DELETE" });
-      const result = await safeJson(response);
-      setToast(response.ok ? successLabel : cleanMessage(result.message ?? "Delete failed."));
-      if (response.ok) await refreshData();
-    } catch (error) {
-      setToast(cleanMessage(error instanceof Error ? error.message : "Delete failed."));
-    } finally {
-      setSaving(false);
-    }
+    const response = await fetch(path, { method: "DELETE" });
+    const result = await response.json();
+    setToast(response.ok ? successLabel : cleanMessage(result.message ?? "Delete failed."));
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   async function convertRequestToWorkOrder(id: string, assignment: { assignedTeamCode?: string; assignedToEmail?: string; assetTag?: string } = {}) {
     setSaving(true);
-    try {
-      const response = await fetch(`/api/service-requests/${id}/convert-work-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(assignment),
-      });
-      const result = await safeJson(response);
-      setToast(response.ok ? `Work order ${result.woNo} created from request.` : cleanMessage(result.message ?? "Conversion failed."));
-      if (response.ok) await refreshData();
-    } catch (error) {
-      setToast(cleanMessage(error instanceof Error ? error.message : "Conversion failed."));
-    } finally {
-      setSaving(false);
-    }
+    const response = await fetch(`/api/service-requests/${id}/convert-work-order`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(assignment),
+    });
+    const result = await response.json();
+    setToast(response.ok ? `Work order ${result.woNo} created from request.` : cleanMessage(result.message ?? "Conversion failed."));
+    if (response.ok) await refreshData();
+    setSaving(false);
   }
 
   async function logout() {
@@ -889,7 +844,6 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               teams={records.teams}
               users={records.users}
               locations={records.locations}
-              departments={records.departments}
               canManageAssets={can("assets.manage")}
               isAdmin={isAdmin}
               deleteAsset={(id) => deleteRecord(`/api/assets/${id}`, "Asset deleted.")}
@@ -1010,20 +964,15 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               setToast={(message) => setToast(cleanMessage(message))}
               saveRolePermissions={async (role, permissionCodes) => {
                 setSaving(true);
-                try {
-                  const response = await fetch("/api/role-permissions", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ role, permissionCodes }),
-                  });
-                  const result = await safeJson(response);
-                  setToast(response.ok ? "Role permissions updated." : cleanMessage(result.message ?? "Permission update failed."));
-                  if (response.ok) await refreshData();
-                } catch (error) {
-                  setToast(cleanMessage(error instanceof Error ? error.message : "Permission update failed."));
-                } finally {
-                  setSaving(false);
-                }
+                const response = await fetch("/api/role-permissions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ role, permissionCodes }),
+                });
+                const result = await response.json();
+                setToast(response.ok ? "Role permissions updated." : cleanMessage(result.message ?? "Permission update failed."));
+                await refreshData();
+                setSaving(false);
               }}
             />
           )}
@@ -1172,7 +1121,6 @@ function Assets({
   teams,
   users,
   locations,
-  departments,
   canManageAssets,
   isAdmin,
   deleteAsset,
@@ -1190,7 +1138,6 @@ function Assets({
   teams: any[];
   users: any[];
   locations: any[];
-  departments: any[];
   canManageAssets: boolean;
   isAdmin: boolean;
   deleteAsset: (id: string) => void;
@@ -1258,7 +1205,7 @@ function Assets({
         });
         const response = await fetch(`/api/assets/filter?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         if (response.ok) {
-          const result = await safeJson(response);
+          const result = await response.json();
           setAssetRowsSource((current) => page === 1 ? result.assets ?? [] : [...current, ...(result.assets ?? [])]);
           setAssetTotal(Number(result.total ?? result.assets?.length ?? 0));
         }
@@ -1362,7 +1309,7 @@ function Assets({
           {hasMoreAssets ? "Scroll down to load more assets" : "All matching assets loaded"}
         </div>
       </Panel>
-      {canManageAssets && createOpen && <RequestModalShell title="Add Asset" onClose={() => setCreateOpen(false)}><AssetCreateForm teams={teams} users={users} locations={locations} departments={departments} onSubmit={async (formData) => { await submitAsset(formData); setCreateOpen(false); }} saving={saving} /></RequestModalShell>}
+      {canManageAssets && createOpen && <RequestModalShell title="Add Asset" onClose={() => setCreateOpen(false)}><AssetCreateForm teams={teams} users={users} locations={locations} onSubmit={async (formData) => { await submitAsset(formData); setCreateOpen(false); }} saving={saving} /></RequestModalShell>}
       {previewAsset && (
         <AssetPreviewModal
           asset={previewAsset}
@@ -1374,7 +1321,7 @@ function Assets({
             setPreviewAsset(null);
           }}
         >
-          {canManageAssets && previewAsset.editing && <AssetEditForm asset={previewAsset} teams={teams} users={users} locations={locations} departments={departments} saving={saving} onSubmit={(formData) => updateAsset(previewAsset.id, formData)} />}
+          {canManageAssets && previewAsset.editing && <AssetEditForm asset={previewAsset} teams={teams} users={users} locations={locations} saving={saving} onSubmit={(formData) => updateAsset(previewAsset.id, formData)} />}
         </AssetPreviewModal>
       )}
       {assetWorkOrderDraft && (
@@ -1408,7 +1355,7 @@ function Assets({
   );
 }
 
-function AssetCreateForm({ teams, users, locations, departments, onSubmit, saving }: { teams: any[]; users: any[]; locations: any[]; departments: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+function AssetCreateForm({ teams, users, locations, onSubmit, saving }: { teams: any[]; users: any[]; locations: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1456,7 +1403,7 @@ function AssetCreateForm({ teams, users, locations, departments, onSubmit, savin
         <AssetTextField label="ORGANIZATION" name="organization" />
         <div className="grid gap-3 sm:grid-cols-2">
           <AssetTextField label="COMMISSIONDATE" name="installDate" type="date" />
-          <AssetDepartmentCodeSelect departments={departments} />
+          <AssetTextField label="DEPARTMENT" name="departmentCode" />
         </div>
         <AssetTextField label="DEPARTMENT_DESC" name="departmentDesc" />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1524,20 +1471,6 @@ function AssetOutOfServiceSelect({ defaultValue = "NO" }: { defaultValue?: strin
       <select name="outOfService" defaultValue={defaultValue} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-lagoon">
         <option value="NO">NO</option>
         <option value="YES">YES</option>
-      </select>
-    </label>
-  );
-}
-
-function AssetDepartmentCodeSelect({ departments, defaultValue = "" }: { departments: any[]; defaultValue?: string }) {
-  return (
-    <label className="grid gap-1 text-sm font-bold text-slate-600">
-      DEPARTMENT
-      <select name="departmentCode" required defaultValue={defaultValue} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-lagoon">
-        <option value="">Select Services department code</option>
-        {departments.map((department) => (
-          <option key={department.id ?? department.code} value={department.code}>{department.code} - {department.name}</option>
-        ))}
       </select>
     </label>
   );
@@ -1666,7 +1599,7 @@ function AssetIdentity({ asset }: { asset: any }) {
   );
 }
 
-function AssetEditForm({ asset, teams, users, locations, departments, saving, onSubmit }: { asset: any; teams: any[]; users: any[]; locations: any[]; departments: any[]; saving: boolean; onSubmit: (formData: FormData) => void }) {
+function AssetEditForm({ asset, teams, users, locations, saving, onSubmit }: { asset: any; teams: any[]; users: any[]; locations: any[]; saving: boolean; onSubmit: (formData: FormData) => void }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -1707,7 +1640,7 @@ function AssetEditForm({ asset, teams, users, locations, departments, saving, on
             <EditField label="ORGANIZATION" name="organization" defaultValue={textValue(asset.organization)} />
             <div className="grid gap-3 sm:grid-cols-2">
               <EditField label="COMMISSIONDATE" name="installDate" type="date" defaultValue={dateValue(asset.installDate)} />
-              <AssetDepartmentCodeSelect departments={departments} defaultValue={textValue(asset.departmentCode)} />
+              <EditField label="DEPARTMENT" name="departmentCode" defaultValue={textValue(asset.departmentCode)} />
             </div>
             <EditField label="DEPARTMENT_DESC" name="departmentDesc" defaultValue={textValue(asset.departmentDesc)} />
             <div className="grid gap-3 sm:grid-cols-2">
@@ -2553,27 +2486,20 @@ function ServiceRequestForm({ title, request, services, categories, departments,
     const name = categoryName.trim();
     if (!name) return;
     setCategorySaving(true);
-    try {
-      const response = await fetch("/api/asset-categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: categoryCode.trim(), name, type: "Service Request", defaultLifeYrs: 5, description: `Request category ${name}` }),
-      });
-      const result = await safeJson(response);
-      if (response.ok) {
-        setLocalCategories((current) => [...current.filter((item) => item.code !== result.code), result]);
-        setCategoryValue(result.name);
-        setCategoryName("");
-        setCategoryCode("");
-        setShowCategoryCreate(false);
-      } else {
-        console.error(cleanMessage(result.message ?? "Unable to create category."));
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setCategorySaving(false);
+    const response = await fetch("/api/asset-categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: categoryCode.trim(), name, type: "Service Request", defaultLifeYrs: 5, description: `Request category ${name}` }),
+    });
+    const result = await response.json();
+    if (response.ok) {
+      setLocalCategories((current) => [...current.filter((item) => item.code !== result.code), result]);
+      setCategoryValue(result.name);
+      setCategoryName("");
+      setCategoryCode("");
+      setShowCategoryCreate(false);
     }
+    setCategorySaving(false);
   }
 
   return (
@@ -2730,53 +2656,46 @@ function RequestPreviewModal({
     const name = assetName.trim() || request.title || "Request Asset";
     const tag = assetTag.trim() || `REQ-${request.ticketNo || Date.now()}`;
     setAssetSaving(true);
-    try {
-      const response = await fetch("/api/assets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tag,
-          name,
-          assetDescription: name,
-          additionalDescription: request.description || "",
-          category: request.category || "General",
-          assetGroup: request.category || "General",
-          system: request.serviceCode || request.category || "General",
-          criticality: request.priority || "MEDIUM",
-          status: "ACTIVE",
-          serialNumber: tag,
-          manufacturer: "Unknown",
-          model: "Request-created asset",
-          purchaseCost: 0,
-          salvageValue: 0,
-          conditionScore: 80,
-          departmentCode: request.departmentCode || assignment.assignedTeamCode || "",
-          assignedTeamCode: assignment.assignedTeamCode || request.assignedTeamCode || "",
-          assignedSupervisorEmail: request.assignedSupervisorEmail || "",
-          siteCode: locationParts[0] || "",
-          buildingCode: locationParts[1] || "",
-          floor: locationParts[2] || "",
-          room: locationParts[3] || request.location || "",
-          remarks: `Created by supervisor from service request ${request.ticketNo}.`,
-        }),
-      });
-      const result = await safeJson(response);
-      if (response.ok) {
-        const created = { ...result, site: { name: result.siteCode }, building: { name: result.buildingCode, code: result.buildingCode } };
-        setLocalAssets((current) => [created, ...current.filter((asset) => asset.tag !== created.tag)]);
-        onAssignAsset(created.tag);
-        if (created.assignedTeamCode && !assignment.assignedTeamCode) onAssignTeam(created.assignedTeamCode);
-        setAssetName("");
-        setAssetTag("");
-        setShowAssetCreate(false);
-      } else {
-        console.error(cleanMessage(result.message ?? "Unable to create asset."));
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setAssetSaving(false);
+    const response = await fetch("/api/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tag,
+        name,
+        assetDescription: name,
+        additionalDescription: request.description || "",
+        category: request.category || "General",
+        assetGroup: request.category || "General",
+        system: request.serviceCode || request.category || "General",
+        criticality: request.priority || "MEDIUM",
+        status: "ACTIVE",
+        serialNumber: tag,
+        manufacturer: "Unknown",
+        model: "Request-created asset",
+        purchaseCost: 0,
+        salvageValue: 0,
+        conditionScore: 80,
+        departmentCode: request.departmentCode || assignment.assignedTeamCode || "",
+        assignedTeamCode: assignment.assignedTeamCode || request.assignedTeamCode || "",
+        assignedSupervisorEmail: request.assignedSupervisorEmail || "",
+        siteCode: locationParts[0] || "",
+        buildingCode: locationParts[1] || "",
+        floor: locationParts[2] || "",
+        room: locationParts[3] || request.location || "",
+        remarks: `Created by supervisor from service request ${request.ticketNo}.`,
+      }),
+    });
+    const result = await response.json();
+    if (response.ok) {
+      const created = { ...result, site: { name: result.siteCode }, building: { name: result.buildingCode, code: result.buildingCode } };
+      setLocalAssets((current) => [created, ...current.filter((asset) => asset.tag !== created.tag)]);
+      onAssignAsset(created.tag);
+      if (created.assignedTeamCode && !assignment.assignedTeamCode) onAssignTeam(created.assignedTeamCode);
+      setAssetName("");
+      setAssetTag("");
+      setShowAssetCreate(false);
     }
+    setAssetSaving(false);
   }
 
   return (
@@ -3387,20 +3306,11 @@ function ImageUploadField({ name, defaultValue = "" }: { name: string; defaultVa
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append("files", file));
     setUploading(true);
-    try {
-      const response = await fetch("/api/uploads", { method: "POST", body: formData });
-      const result = await safeJson(response);
-      if (response.ok) {
-        const next = [...urls, ...(result.urls ?? [])].join("\n");
-        setValue(next);
-      } else {
-        console.error(cleanMessage(result.message ?? "Upload failed."));
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setUploading(false);
-    }
+    const response = await fetch("/api/uploads", { method: "POST", body: formData });
+    const result = await response.json();
+    const next = [...urls, ...(result.urls ?? [])].join("\n");
+    setValue(next);
+    setUploading(false);
   }
 
   return (
@@ -4673,21 +4583,16 @@ function DocumentUploadForm({ assets, category, refreshData }: { assets: any[]; 
     formData.set("assetTag", assetTag);
     Array.from(files).forEach((file) => formData.append("files", file));
     setUploading(true);
-    try {
-      const response = await fetch("/api/document-uploads", { method: "POST", body: formData });
-      const result = await safeJson(response);
-      setMessage(response.ok ? "File uploaded." : cleanMessage(result.message || "Upload failed."));
-      if (response.ok) {
-        await refreshData();
-        setFiles(null);
-        event.currentTarget.reset();
-        setAssetTag("");
-      }
-    } catch (error) {
-      setMessage(cleanMessage(error instanceof Error ? error.message : "Upload failed."));
-    } finally {
-      setUploading(false);
+    const response = await fetch("/api/document-uploads", { method: "POST", body: formData });
+    const result = await response.json();
+    setMessage(response.ok ? "File uploaded." : cleanMessage(result.message || "Upload failed."));
+    if (response.ok) {
+      await refreshData();
+      setFiles(null);
+      event.currentTarget.reset();
+      setAssetTag("");
     }
+    setUploading(false);
   }
 
   return (
@@ -4980,7 +4885,7 @@ function ServiceForm({ service, teams, departments, onSubmit, saving }: { servic
         <select name="departmentCode" defaultValue={service?.departmentCode ?? service?.code ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Select department code</option>
           {departments.map((department) => (
-            <option key={department.id ?? department.code} value={department.code}>{department.code} - {department.name}</option>
+            <option key={department.id} value={department.code}>{department.code} - {department.name}</option>
           ))}
         </select>
         <select name="teamCode" defaultValue={service?.teamCode ?? service?.team?.code ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
@@ -5054,7 +4959,7 @@ function Locations({ locations, submitLocation, deleteLocation, isAdmin, saving 
         });
         const response = await fetch(`/api/locations?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         if (response.ok) {
-          const result = await safeJson(response);
+          const result = await response.json();
           setLocationRowsSource((current) => page === 1 ? result.locations ?? [] : [...current, ...(result.locations ?? [])]);
           setLocationTotal(Number(result.total ?? result.locations?.length ?? 0));
         }
@@ -6336,7 +6241,7 @@ function HousingReportsWorkspace({ rooms, bookings }: { rooms: any[]; bookings: 
   };
   async function preview(nextType = type) {
     const response = await fetch(urlFor(nextType, "preview", filters), { cache: "no-store" });
-    const result = await safeJson(response);
+    const result = await response.json();
     setRows(result.rows ?? []);
   }
   function urlFor(nextType: string, format: string, nextFilters = filters) {
@@ -6922,7 +6827,7 @@ function Reports() {
 
   async function preview(nextType = type) {
     const response = await fetch(reportUrl(nextType, "preview"), { cache: "no-store" });
-    const result = await safeJson(response);
+    const result = await response.json();
     setRows(result.rows ?? []);
     setKpis(result.kpis ?? null);
   }
@@ -7008,361 +6913,23 @@ function Reports() {
 }
 
 function AuditLogs({ logs }: { logs: any[] }) {
-  const [selectedLog, setSelectedLog] = useState<any | null>(null);
-  const [filters, setFilters] = useState({ user: "", dateFrom: "", dateTo: "", role: "", action: "", recordType: "" });
-  const filteredLogs = useMemo(() => logs.filter((log) => auditLogMatchesFilters(log, filters)), [logs, filters]);
-  const groupedLogs = useMemo(() => groupAuditLogsByDate(filteredLogs), [filteredLogs]);
-  const roles = useMemo(() => uniqueSorted(logs.map((log) => log.role)), [logs]);
-  const actions = useMemo(() => uniqueSorted(logs.map((log) => log.action)), [logs]);
-  const recordTypes = useMemo(() => uniqueSorted(logs.map((log) => log.entity)), [logs]);
-  const auditExportUrl = (format: string) => {
-    const params = new URLSearchParams({ type: "audit-logs", format });
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) params.set(key, value);
-    });
-    return `/api/reports?${params.toString()}`;
-  };
-
   return (
     <Panel title="Audit Logs" icon={Activity}>
-      <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-6">
-        <input value={filters.user} onChange={(event) => setFilters((current) => ({ ...current, user: event.target.value }))} placeholder="User" className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon" />
-        <input type="date" value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon" />
-        <input type="date" value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon" />
-        <AuditFilterSelect label="Role" value={filters.role} options={roles} onChange={(role) => setFilters((current) => ({ ...current, role }))} />
-        <AuditFilterSelect label="Action" value={filters.action} options={actions} onChange={(action) => setFilters((current) => ({ ...current, action }))} />
-        <AuditFilterSelect label="Record Type" value={filters.recordType} options={recordTypes} onChange={(recordType) => setFilters((current) => ({ ...current, recordType }))} />
-      </div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-bold text-slate-600">{filteredLogs.length} logs shown / {logs.length} retained for 30 days</p>
-        <div className="flex flex-wrap gap-2">
-          <a className="rounded-lg bg-lagoon px-3 py-2 text-xs font-black text-white" href={auditExportUrl("csv")}>CSV</a>
-          <a className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white" href={auditExportUrl("excel")}>Excel</a>
-          <a className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white" href={auditExportUrl("html")} target="_blank" rel="noreferrer">Separate Tab</a>
-          <button type="button" onClick={() => setFilters({ user: "", dateFrom: "", dateTo: "", role: "", action: "", recordType: "" })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Reset</button>
-        </div>
-      </div>
-      <div className="grid gap-4">
-        {groupedLogs.map((group) => (
-          <section key={group.date} className="rounded-lg border border-slate-200 bg-white p-3">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-black text-slate-800">{group.label}</h4>
-              <span className="rounded-full bg-lagoon/10 px-3 py-1 text-xs font-black text-lagoon">{group.rows.length} logs</span>
-            </div>
-            <DataTable
-              rows={group.rows}
-              columns={[
-                ["logKey", "Log ID"],
-                ["createdAt", "Time"],
-                ["actorName", "User"],
-                ["role", "Role"],
-                ["action", "Action"],
-                ["entity", "Record Type"],
-                ["entityId", "Record ID"],
-                ["details", "Details"],
-              ]}
-              renderCell={(row, key) => key === "details" ? <AuditDetailsButton log={row} onOpen={() => setSelectedLog(row)} /> : undefined}
-            />
-          </section>
-        ))}
-        {!groupedLogs.length && <p className="rounded-lg bg-slate-50 p-4 text-sm font-bold text-slate-500">No audit logs match the selected filters.</p>}
-      </div>
-      {selectedLog && <AuditDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} />}
+      <ReportButtons type="audit-logs" label="Audit report" />
+      <DataTable
+        rows={logs}
+        columns={[
+          ["createdAt", "Time"],
+          ["actorName", "User"],
+          ["role", "Role"],
+          ["action", "Action"],
+          ["entity", "Record Type"],
+          ["entityId", "Record ID"],
+          ["details", "Details"],
+        ]}
+      />
     </Panel>
   );
-}
-
-function AuditFilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
-  return (
-    <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-lagoon">
-      <option value="">{label}</option>
-      {options.map((option) => <option key={option} value={option}>{option}</option>)}
-    </select>
-  );
-}
-
-function AuditDetailsButton({ log, onOpen }: { log: any; onOpen: () => void }) {
-  const parsed = parseAuditDetails(log.details);
-  const detailText = auditDetailSummary(parsed);
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="max-w-[260px] rounded-lg border border-lagoon/30 bg-lagoon/10 px-3 py-2 text-left text-xs font-black text-lagoon hover:bg-lagoon hover:text-white"
-      title="Open audit details"
-    >
-      <span className="block truncate">{detailText}</span>
-      <span className="mt-1 block text-[10px] uppercase opacity-75">View details</span>
-    </button>
-  );
-}
-
-function AuditDetailsModal({ log, onClose }: { log: any; onClose: () => void }) {
-  const [loadedLog, setLoadedLog] = useState(log);
-  const [loading, setLoading] = useState(!log.details);
-  const [loadError, setLoadError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoadedLog(log);
-    setLoadError("");
-    if (log.details) {
-      setLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-    setLoading(true);
-    fetch(`/api/audit-logs/${encodeURIComponent(log.id)}`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Unable to load audit details");
-        return response.json();
-      })
-      .then((record) => {
-        if (!cancelled) setLoadedLog(record);
-      })
-      .catch((error) => {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : "Unable to load audit details");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [log]);
-
-  const parsed = parseAuditDetails(loadedLog.details);
-  const payload = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, any> : null;
-  const details = payload?.details ?? parsed;
-  const actor = payload?.actor;
-  const bulkEntries = auditBulkEntries(details);
-
-  return (
-    <RequestModalShell title={`Audit Details / ${loadedLog.action || "Activity"}`} onClose={onClose}>
-      <div className="grid gap-4">
-        <div className="grid gap-3 md:grid-cols-3">
-          <PreviewField label="Log ID" value={loadedLog.logKey || loadedLog.id} />
-          <PreviewField label="Action" value={loadedLog.action} />
-          <PreviewField label="Record Type" value={loadedLog.entity} />
-          <PreviewField label="Record ID" value={loadedLog.entityId} />
-          <PreviewField label="Logged At" value={formatDateCell(payload?.at || loadedLog.createdAt)} />
-          <PreviewField label="User" value={actor?.name || loadedLog.actorName} />
-          <PreviewField label="Role" value={actor?.role || loadedLog.role} />
-        </div>
-        {loading && <p className="rounded-lg bg-slate-50 p-4 text-sm font-bold text-slate-500">Loading full audit details...</p>}
-        {loadError && <p className="rounded-lg bg-coral/10 p-4 text-sm font-black text-coral">{loadError}</p>}
-        {bulkEntries.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-lagoon/20 bg-lagoon/5 p-3">
-            <p className="text-sm font-black text-lagoon">{bulkEntries.length} bulk upload row entries recorded</p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => downloadBulkAuditEntries(loadedLog, bulkEntries)} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Export Excel</button>
-              <button type="button" onClick={() => openBulkAuditEntriesTab(loadedLog, bulkEntries)} className="rounded-lg bg-ink px-3 py-2 text-xs font-black text-white">Open Separate Tab</button>
-            </div>
-          </div>
-        )}
-        {!loading && !loadError && <AuditFriendlyDetails value={details} />}
-      </div>
-    </RequestModalShell>
-  );
-}
-
-function AuditFriendlyDetails({ value }: { value: unknown }) {
-  if (value === null || value === undefined || value === "") {
-    return <p className="rounded-lg bg-slate-50 p-4 text-sm font-bold text-slate-500">No additional details were recorded for this activity.</p>;
-  }
-
-  if (typeof value !== "object") {
-    return (
-      <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-black uppercase text-slate-500">Details</p>
-        <p className="mt-2 whitespace-pre-wrap break-words text-sm font-bold text-slate-700">{String(value)}</p>
-      </section>
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return (
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-xs font-black uppercase text-slate-500">Details</p>
-        <div className="mt-3 grid gap-2">
-          {value.map((item, index) => <AuditValueBlock key={index} label={`Item ${index + 1}`} value={item} />)}
-        </div>
-      </section>
-    );
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  return (
-    <div className="grid gap-3">
-      {entries.map(([key, item]) => <AuditValueBlock key={key} label={friendlyAuditLabel(key)} value={item} />)}
-    </div>
-  );
-}
-
-function AuditValueBlock({ label, value }: { label: string; value: unknown }) {
-  if (value === null || value === undefined || value === "") {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-        <p className="mt-1 text-sm font-bold text-slate-400">Not provided</p>
-      </div>
-    );
-  }
-
-  if (typeof value !== "object") {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-        <p className="mt-1 whitespace-pre-wrap break-words text-sm font-bold text-slate-700">{formatAuditScalar(value)}</p>
-      </div>
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-        <div className="mt-2 grid gap-2">
-          {value.map((item, index) => <AuditValueBlock key={index} label={`Item ${index + 1}`} value={item} />)}
-        </div>
-      </div>
-    );
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-      <div className="mt-3 grid gap-2 md:grid-cols-2">
-        {entries.map(([key, item]) => <AuditValueBlock key={key} label={friendlyAuditLabel(key)} value={item} />)}
-      </div>
-    </div>
-  );
-}
-
-function parseAuditDetails(value: unknown) {
-  if (typeof value !== "string") return value;
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
-}
-
-function auditDetailSummary(value: unknown) {
-  const parsed = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : null;
-  const details = parsed?.details ?? value;
-  if (details && typeof details === "object" && !Array.isArray(details)) {
-    const keys = Object.keys(details);
-    if (keys.includes("before") && keys.includes("after")) return "Before and after changes";
-    if (keys.includes("createdRecord")) return "Created record details";
-    if (keys.includes("savedRecord")) return "Saved record details";
-    if (keys.includes("deletedRecord")) return "Deleted record details";
-    if (keys.length) return keys.map(friendlyAuditLabel).slice(0, 3).join(", ");
-  }
-  if (typeof details === "string" && details.trim()) return details;
-  return "Open activity details";
-}
-
-function friendlyAuditLabel(key: string) {
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatAuditScalar(value: unknown) {
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string" && isDateLikeString(value)) return formatDateCell(value);
-  return String(value);
-}
-
-function auditLogMatchesFilters(log: any, filters: { user: string; dateFrom: string; dateTo: string; role: string; action: string; recordType: string }) {
-  if (filters.user && !String(log.actorName || "").toLowerCase().includes(filters.user.toLowerCase())) return false;
-  if (filters.role && log.role !== filters.role) return false;
-  if (filters.action && log.action !== filters.action) return false;
-  if (filters.recordType && log.entity !== filters.recordType) return false;
-  const date = auditDate(log.createdAt);
-  if (filters.dateFrom && date < filters.dateFrom) return false;
-  if (filters.dateTo && date > filters.dateTo) return false;
-  return true;
-}
-
-function groupAuditLogsByDate(logs: any[]) {
-  const groups = new Map<string, any[]>();
-  logs.forEach((log) => {
-    const key = auditDate(log.createdAt);
-    groups.set(key, [...(groups.get(key) ?? []), log]);
-  });
-  return Array.from(groups.entries())
-    .sort(([left], [right]) => right.localeCompare(left))
-    .map(([date, rows]) => ({ date, label: auditDateLabel(date), rows }));
-}
-
-function auditDate(value: unknown) {
-  const date = new Date(String(value || ""));
-  if (Number.isNaN(date.getTime())) return String(value || "").slice(0, 10);
-  return date.toISOString().slice(0, 10);
-}
-
-function auditDateLabel(value: string) {
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value || "Unknown date";
-  return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-}
-
-function uniqueSorted(values: unknown[]) {
-  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-}
-
-function auditBulkEntries(details: unknown) {
-  if (!details || typeof details !== "object" || Array.isArray(details)) return [];
-  const entries = (details as Record<string, any>).entries;
-  return Array.isArray(entries) ? entries : [];
-}
-
-function bulkAuditRows(entries: any[]) {
-  return entries.map((entry) => ({
-    row: entry.row,
-    status: entry.status,
-    module: entry.module,
-    action: entry.action,
-    recordType: entry.recordType,
-    recordKey: entry.recordKey,
-    recordId: entry.recordId,
-    displayName: entry.displayName,
-    message: entry.message || "",
-    source: JSON.stringify(entry.source || {}),
-  }));
-}
-
-function downloadBulkAuditEntries(log: any, entries: any[]) {
-  const rows = bulkAuditRows(entries);
-  const html = auditEntriesHtml(log, rows);
-  const blob = new Blob([html], { type: "application/vnd.ms-excel" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${log.logKey || "bulk-upload-audit"}.xls`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function openBulkAuditEntriesTab(log: any, entries: any[]) {
-  const rows = bulkAuditRows(entries);
-  const win = window.open("", "_blank", "noopener,noreferrer");
-  if (!win) return;
-  win.document.write(auditEntriesHtml(log, rows));
-  win.document.close();
-}
-
-function auditEntriesHtml(log: any, rows: Record<string, unknown>[]) {
-  const columns = Object.keys(rows[0] || { row: "", status: "", module: "", action: "", recordType: "", recordKey: "", recordId: "", displayName: "", message: "", source: "" });
-  const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char] || char));
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escape(log.logKey || "Bulk Upload Audit")}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left;vertical-align:top}th{background:#f1f5f9}.success{color:#047857;font-weight:700}.failed{color:#dc2626;font-weight:700}</style></head><body><h1>${escape(log.logKey || "Bulk Upload Audit")}</h1><p>${escape(log.action)} / ${escape(log.actorName)} / ${escape(formatDateCell(log.createdAt))}</p><table><thead><tr>${columns.map((column) => `<th>${escape(friendlyAuditLabel(column))}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((column) => `<td class="${column === "status" ? String(row[column]).toLowerCase() : ""}">${escape(row[column])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
 }
 
 function Template({ type, title, value }: { type: string; title: string; value: string }) {
@@ -7399,7 +6966,7 @@ function DeleteRowButton({ saving, onDelete }: { saving: boolean; onDelete: () =
   );
 }
 
-function DataTable({ rows, columns, actions, renderCell }: { rows: any[]; columns: [string, string][]; actions?: (row: any) => ReactNode; renderCell?: (row: any, key: string) => ReactNode | undefined }) {
+function DataTable({ rows, columns, actions }: { rows: any[]; columns: [string, string][]; actions?: (row: any) => ReactNode }) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -7431,7 +6998,7 @@ function DataTable({ rows, columns, actions, renderCell }: { rows: any[]; column
                 <td className="whitespace-nowrap px-3 py-3 font-black text-slate-500">{startIndex + index + 1}</td>
                 {columns.map(([key]) => (
                   <td key={key} className="max-w-[360px] whitespace-nowrap px-3 py-3">
-                    {renderCell?.(row, key) ?? <CellValue value={row[key]} field={key} />}
+                    <CellValue value={row[key]} field={key} />
                   </td>
                 ))}
                 {actions && <td className="whitespace-nowrap px-3 py-3">{actions(row)}</td>}

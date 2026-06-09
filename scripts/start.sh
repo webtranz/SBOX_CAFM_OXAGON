@@ -28,7 +28,15 @@ if [ -n "${DATABASE_URL:-}" ]; then
     sleep 3
   done
 
-  echo "Database seed disabled. No demo seed data will be inserted during startup."
+  if [ "${RUN_DB_SEED:-no}" = "yes" ]; then
+    if ./node_modules/.bin/prisma db seed; then
+      echo "Database seed completed."
+    else
+      echo "Database seed failed. App will still start; check /api/health for DB status."
+    fi
+  else
+    echo "Database seed skipped. Set RUN_DB_SEED=yes to seed/reset demo data."
+  fi
 
   if node scripts/ensure-location-schema.mjs; then
     echo "Location schema check completed."

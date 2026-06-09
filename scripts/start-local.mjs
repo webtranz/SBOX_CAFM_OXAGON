@@ -53,7 +53,13 @@ async function prepareDatabase() {
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 
-  console.log("Database seed disabled. No demo seed data will be inserted during startup.");
+  if (process.env.RUN_DB_SEED === "yes") {
+    const result = runPrisma(["db", "seed"]);
+    if (result.status === 0) console.log("Database seed completed.");
+    else console.log("Database seed failed. App will still start; check /api/health for DB status.");
+  } else {
+    console.log("Database seed skipped. Set RUN_DB_SEED=yes to seed/reset demo data.");
+  }
 
   const locationSchema = runNode(["scripts/ensure-location-schema.mjs"]);
   if (locationSchema.status === 0) console.log("Location schema check completed.");
