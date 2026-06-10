@@ -61,6 +61,10 @@ async function prepareDatabase() {
     console.log("Database seed skipped. Set RUN_DB_SEED=yes to seed/reset demo data.");
   }
 
+  const adminLogin = runNode(["scripts/ensure-admin-login.mjs"]);
+  if (adminLogin.status === 0) console.log("Admin login check completed.");
+  else console.log("Admin login check failed. App will still start; review database logs.");
+
   const locationSchema = runNode(["scripts/ensure-location-schema.mjs"]);
   if (locationSchema.status === 0) console.log("Location schema check completed.");
   else console.log("Location schema check failed. App will still start; review database logs.");
