@@ -2504,7 +2504,7 @@ function requestLocationNeedles(location: string) {
 function assetMatchesLocation(asset: any, location: string) {
   const needles = requestLocationNeedles(location);
   if (!needles.length) return true;
-  const haystack = [
+  const assetLocationParts = [
     asset.locationCode,
     asset.locationDesc,
     asset.siteCode,
@@ -2514,8 +2514,17 @@ function assetMatchesLocation(asset: any, location: string) {
     asset.building?.name,
     asset.floor,
     asset.room,
-  ].filter(Boolean).join(" / ").toLowerCase();
-  return needles.every((needle) => haystack.includes(needle));
+  ].filter(Boolean).map((part) => String(part).trim().toLowerCase());
+  const haystack = assetLocationParts.join(" / ");
+  const compactAssetParts = assetLocationParts.map((part) => part.replace(/[^a-z0-9]/g, "")).filter((part) => part.length > 2);
+
+  return needles.some((needle) => {
+    const compactNeedle = needle.replace(/[^a-z0-9]/g, "");
+    return (
+      haystack.includes(needle) ||
+      compactAssetParts.some((part) => part.includes(compactNeedle) || compactNeedle.includes(part))
+    );
+  });
 }
 
 function assetMatchesDepartment(asset: any, departmentCode: string, assignedTeamCode = "") {
@@ -2541,6 +2550,13 @@ function assetMatchesDepartment(asset: any, departmentCode: string, assignedTeam
 function serviceMatchesDepartment(service: any, departmentCode: string) {
   if (!departmentCode) return true;
   return [service.code, service.departmentCode, service.team?.code, service.teamCode].filter(Boolean).includes(departmentCode);
+}
+
+function scopedAssetOptions(assets: any[], departmentCode: string, assignedTeamCode: string, location: string) {
+  if (!departmentCode && !assignedTeamCode) return [];
+  const departmentAssets = assets.filter((asset) => assetMatchesDepartment(asset, departmentCode, assignedTeamCode));
+  const locationAssets = departmentAssets.filter((asset) => assetMatchesLocation(asset, location));
+  return location && locationAssets.length ? locationAssets : departmentAssets;
 }
 
 function ServiceRequestForm({ title, request, services, categories, departments, teams, locations, assets, onSubmit, saving, mode = "panel" }: { title: string; request?: any; services: any[]; categories: any[]; departments: any[]; teams: any[]; locations: any[]; assets: any[]; onSubmit: (formData: FormData) => void; saving: boolean; mode?: "panel" | "modal" }) {
@@ -2571,10 +2587,7 @@ function ServiceRequestForm({ title, request, services, categories, departments,
   const filteredServices = useMemo(() => services.filter((service) => serviceMatchesDepartment(service, departmentCode)), [services, departmentCode]);
   const selectedService = services.find((service) => service.code === serviceCode);
   const selectedTeamCode = selectedService?.team?.code || selectedService?.teamCode || teams.find((team) => team.code === departmentCode)?.code || "";
-  const filteredAssets = useMemo(
-    () => assets.filter((asset) => assetMatchesDepartment(asset, departmentCode, selectedTeamCode) && assetMatchesLocation(asset, locationValue)),
-    [assets, departmentCode, selectedTeamCode, locationValue],
-  );
+  const filteredAssets = useMemo(() => scopedAssetOptions(assets, departmentCode, selectedTeamCode, locationValue), [assets, departmentCode, selectedTeamCode, locationValue]);
 
   useEffect(() => {
     if (serviceCode && !filteredServices.some((service) => service.code === serviceCode)) {
@@ -2682,14 +2695,15 @@ function ServiceRequestForm({ title, request, services, categories, departments,
         <label className="grid gap-2 text-sm font-bold text-slate-600">
           Related Asset
           <select name="assetTag" value={assetTagValue} onChange={(event) => setAssetTagValue(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
-            <option value="">{departmentCode || locationValue ? `Matching assets (${filteredAssets.length})` : "Select department/location first"}</option>
+            <option value="">{departmentCode || selectedTeamCode ? `Matching assets (${filteredAssets.length})` : "Select department or service first"}</option>
             {filteredAssets.map((asset) => (
               <option key={asset.id ?? asset.tag} value={asset.tag}>
                 {asset.tag} - {asset.assetDescription || asset.name} / {[asset.departmentCode, asset.buildingCode || asset.building?.name, asset.floor, asset.room].filter(Boolean).join(" > ")}
               </option>
             ))}
           </select>
-          {(departmentCode || locationValue) && !filteredAssets.length && <span className="text-xs font-black text-amber-700">No assets match the selected department and location.</span>}
+          {!departmentCode && !selectedTeamCode && <span className="text-xs font-black text-slate-500">Select a department or service to load only relevant coded assets.</span>}
+          {(departmentCode || selectedTeamCode) && !filteredAssets.length && <span className="text-xs font-black text-amber-700">No assets match the selected department/service code.</span>}
         </label>
         {request && (
           <select name="status" defaultValue={request.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
@@ -2765,13 +2779,7 @@ function RequestPreviewModal({
   const [assetName, setAssetName] = useState("");
   const [assetTag, setAssetTag] = useState("");
   const requestedTeamCode = assignment.assignedTeamCode || request.assignedTeamCode || "";
-  const assetOptions = useMemo(
-    () => localAssets.filter((asset) =>
-      assetMatchesDepartment(asset, request.departmentCode || "", requestedTeamCode) &&
-      assetMatchesLocation(asset, request.location || ""),
-    ),
-    [localAssets, request.departmentCode, requestedTeamCode, request.location],
-  );
+  const assetOptions = useMemo(() => scopedAssetOptions(localAssets, request.departmentCode || "", requestedTeamCode, request.location || ""), [localAssets, request.departmentCode, requestedTeamCode, request.location]);
   const selectedAsset = localAssets.find((asset) => asset.tag === assignment.assetTag);
   const locationParts = String(request.location || "").split("/").map((part) => part.trim()).filter(Boolean);
 
