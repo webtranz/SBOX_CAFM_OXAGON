@@ -2559,6 +2559,16 @@ function scopedAssetOptions(assets: any[], departmentCode: string, assignedTeamC
   return location && locationAssets.length ? locationAssets : departmentAssets;
 }
 
+function serviceRequestLocationLabel(location: any) {
+  const path = [location.site, location.building, location.floor, location.room]
+    .map((part) => String(part || "").trim())
+    .filter((part) => part && part.toLowerCase() !== "unassigned");
+  const detail = location.description && !path.some((part) => part.toLowerCase() === String(location.description).trim().toLowerCase())
+    ? ` - ${location.description}`
+    : "";
+  return [location.code, ...path].filter(Boolean).join(" / ") + detail;
+}
+
 function ServiceRequestForm({ title, request, services, categories, departments, teams, locations, assets, onSubmit, saving, mode = "panel" }: { title: string; request?: any; services: any[]; categories: any[]; departments: any[]; teams: any[]; locations: any[]; assets: any[]; onSubmit: (formData: FormData) => void; saving: boolean; mode?: "panel" | "modal" }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2567,7 +2577,16 @@ function ServiceRequestForm({ title, request, services, categories, departments,
     if (!request) form.reset();
   }
 
-  const locationOptions = locations.map((location) => `${location.site} / ${location.building} / ${location.floor} / ${location.room}`);
+  const locationOptions = useMemo(
+    () => Array.from(
+      new Map(
+        locations
+          .filter((location) => location.active !== false && location.code)
+          .map((location) => [location.code, serviceRequestLocationLabel(location)]),
+      ).values(),
+    ).sort((first, second) => first.localeCompare(second, undefined, { numeric: true, sensitivity: "base" })),
+    [locations],
+  );
   const formClass = mode === "modal" ? "" : "rounded-lg border border-white/80 bg-white p-5 shadow-lift";
   const [priority, setPriority] = useState(request?.priority ?? "MEDIUM");
   const [departmentCode, setDepartmentCode] = useState(request?.departmentCode ?? "");
