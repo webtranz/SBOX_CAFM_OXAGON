@@ -2416,6 +2416,7 @@ function Helpdesk({
             departments={departments}
             teams={teams}
             locations={locations}
+            assets={assets}
             onSubmit={async (formData) => {
               await submitRequest(formData);
               setCreateOpen(false);
@@ -2435,6 +2436,7 @@ function Helpdesk({
             departments={departments}
             teams={teams}
             locations={locations}
+            assets={assets}
             onSubmit={async (formData) => {
               await updateRequest(editing.id, formData);
               setEditing(null);
@@ -2492,7 +2494,41 @@ function requestFormData(request: any, status: string, rejectionReason = "", ove
   return formData;
 }
 
-function ServiceRequestForm({ title, request, services, categories, departments, teams, locations, onSubmit, saving, mode = "panel" }: { title: string; request?: any; services: any[]; categories: any[]; departments: any[]; teams: any[]; locations: any[]; onSubmit: (formData: FormData) => void; saving: boolean; mode?: "panel" | "modal" }) {
+function requestLocationNeedles(location: string) {
+  return String(location || "")
+    .split("/")
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part.length > 1 && !["unassigned", "-"].includes(part));
+}
+
+function assetMatchesLocation(asset: any, location: string) {
+  const needles = requestLocationNeedles(location);
+  if (!needles.length) return true;
+  const haystack = [
+    asset.locationCode,
+    asset.locationDesc,
+    asset.siteCode,
+    asset.site?.name,
+    asset.buildingCode,
+    asset.building?.code,
+    asset.building?.name,
+    asset.floor,
+    asset.room,
+  ].filter(Boolean).join(" / ").toLowerCase();
+  return needles.every((needle) => haystack.includes(needle));
+}
+
+function assetMatchesDepartment(asset: any, departmentCode: string, assignedTeamCode = "") {
+  if (!departmentCode && !assignedTeamCode) return true;
+  return [asset.departmentCode, asset.assignedTeamCode].filter(Boolean).includes(departmentCode) || (assignedTeamCode ? asset.assignedTeamCode === assignedTeamCode : false);
+}
+
+function serviceMatchesDepartment(service: any, departmentCode: string) {
+  if (!departmentCode) return true;
+  return [service.code, service.departmentCode, service.team?.code, service.teamCode].filter(Boolean).includes(departmentCode);
+}
+
+function ServiceRequestForm({ title, request, services, categories, departments, teams, locations, assets, onSubmit, saving, mode = "panel" }: { title: string; request?: any; services: any[]; categories: any[]; departments: any[]; teams: any[]; locations: any[]; assets: any[]; onSubmit: (formData: FormData) => void; saving: boolean; mode?: "panel" | "modal" }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2503,6 +2539,10 @@ function ServiceRequestForm({ title, request, services, categories, departments,
   const locationOptions = locations.map((location) => `${location.site} / ${location.building} / ${location.floor} / ${location.room}`);
   const formClass = mode === "modal" ? "" : "rounded-lg border border-white/80 bg-white p-5 shadow-lift";
   const [priority, setPriority] = useState(request?.priority ?? "MEDIUM");
+  const [departmentCode, setDepartmentCode] = useState(request?.departmentCode ?? "");
+  const [serviceCode, setServiceCode] = useState(request?.serviceCode ?? "");
+  const [locationValue, setLocationValue] = useState(request?.location ?? "");
+  const [assetTagValue, setAssetTagValue] = useState(request?.assetTag ?? "");
   const [categoryValue, setCategoryValue] = useState(request?.category ?? "");
   const [showCategoryCreate, setShowCategoryCreate] = useState(false);
   const [categoryName, setCategoryName] = useState("");
@@ -2513,6 +2553,25 @@ function ServiceRequestForm({ title, request, services, categories, departments,
     ...localCategories.map((category) => category.name || category.code).filter(Boolean),
     ...services.map((service) => service.category).filter(Boolean),
   ]));
+  const filteredServices = useMemo(() => services.filter((service) => serviceMatchesDepartment(service, departmentCode)), [services, departmentCode]);
+  const selectedService = services.find((service) => service.code === serviceCode);
+  const selectedTeamCode = selectedService?.team?.code || selectedService?.teamCode || teams.find((team) => team.code === departmentCode)?.code || "";
+  const filteredAssets = useMemo(
+    () => assets.filter((asset) => assetMatchesDepartment(asset, departmentCode, selectedTeamCode) && assetMatchesLocation(asset, locationValue)),
+    [assets, departmentCode, selectedTeamCode, locationValue],
+  );
+
+  useEffect(() => {
+    if (serviceCode && !filteredServices.some((service) => service.code === serviceCode)) {
+      setServiceCode("");
+    }
+  }, [departmentCode, filteredServices, serviceCode]);
+
+  useEffect(() => {
+    if (assetTagValue && !filteredAssets.some((asset) => asset.tag === assetTagValue)) {
+      setAssetTagValue("");
+    }
+  }, [assetTagValue, filteredAssets]);
   const priorities = [
     { value: "LOW", label: "Low", tone: "bg-emerald-50 text-emerald-700 border-emerald-200" },
     { value: "MEDIUM", label: "Medium", tone: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -2570,7 +2629,7 @@ function ServiceRequestForm({ title, request, services, categories, departments,
           ))}
         </div>
         <input type="hidden" name="priority" value={priority} />
-        <select name="location" defaultValue={request?.location ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <select name="location" value={locationValue} onChange={(event) => setLocationValue(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
           <option value="">Location</option>
           {locationOptions.map((location) => <option key={location}>{location}</option>)}
         </select>
@@ -2596,22 +2655,34 @@ function ServiceRequestForm({ title, request, services, categories, departments,
           <input name="requester" defaultValue={request?.requester ?? ""} placeholder="Created by / requester" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <select name="departmentCode" defaultValue={request?.departmentCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <select name="departmentCode" value={departmentCode} onChange={(event) => setDepartmentCode(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option value="">Department</option>
             {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
           </select>
-          <select name="serviceCode" defaultValue={request?.serviceCode ?? ""} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <select name="serviceCode" value={serviceCode} onChange={(event) => setServiceCode(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option value="">Service</option>
-            {services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
+            {filteredServices.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
           </select>
         </div>
+        <label className="grid gap-2 text-sm font-bold text-slate-600">
+          Related Asset
+          <select name="assetTag" value={assetTagValue} onChange={(event) => setAssetTagValue(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <option value="">{departmentCode || locationValue ? `Matching assets (${filteredAssets.length})` : "Select department/location first"}</option>
+            {filteredAssets.map((asset) => (
+              <option key={asset.id ?? asset.tag} value={asset.tag}>
+                {asset.tag} - {asset.assetDescription || asset.name} / {[asset.departmentCode, asset.buildingCode || asset.building?.name, asset.floor, asset.room].filter(Boolean).join(" > ")}
+              </option>
+            ))}
+          </select>
+          {(departmentCode || locationValue) && !filteredAssets.length && <span className="text-xs font-black text-amber-700">No assets match the selected department and location.</span>}
+        </label>
         {request && (
           <select name="status" defaultValue={request.status} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option>NEW</option><option>TRIAGED</option><option>APPROVED</option><option>REJECTED</option><option>ASSIGNED</option><option>CLOSED</option>
           </select>
         )}
         {!request && <input type="hidden" name="status" value="NEW" />}
-        <input type="hidden" name="assignedTeamCode" value={request?.assignedTeamCode ?? ""} />
+        <input type="hidden" name="assignedTeamCode" value={selectedTeamCode || request?.assignedTeamCode || ""} />
         <ImageUploadField name="attachmentUrls" defaultValue={request?.attachmentUrls ?? ""} />
         {request && <textarea name="rejectionReason" defaultValue={request?.rejectionReason ?? ""} placeholder="Reject / close reason" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />}
         <div className="flex justify-end gap-3">
@@ -2678,16 +2749,22 @@ function RequestPreviewModal({
   const [assetSaving, setAssetSaving] = useState(false);
   const [assetName, setAssetName] = useState("");
   const [assetTag, setAssetTag] = useState("");
-  const requestText = `${request.location || ""} ${request.departmentCode || ""} ${request.category || ""}`.toLowerCase();
-  const relatedAssets = localAssets.filter((asset) => {
-    const departmentMatch = !request.departmentCode || asset.departmentCode === request.departmentCode || asset.assignedTeamCode === request.assignedTeamCode || asset.assignedTeamCode === assignment.assignedTeamCode;
-    const locationText = `${asset.siteCode || asset.site?.name || ""} ${asset.buildingCode || asset.building?.name || ""} ${asset.floor || ""} ${asset.room || ""}`.toLowerCase();
-    const locationMatch = !request.location || requestText.includes(String(asset.room || "").toLowerCase()) || requestText.includes(String(asset.floor || "").toLowerCase()) || requestText.includes(String(asset.buildingCode || "").toLowerCase()) || locationText.split(/\s+/).some((token) => token.length > 2 && requestText.includes(token));
-    return departmentMatch || locationMatch;
-  });
-  const assetOptions = relatedAssets.length ? relatedAssets : localAssets;
+  const requestedTeamCode = assignment.assignedTeamCode || request.assignedTeamCode || "";
+  const assetOptions = useMemo(
+    () => localAssets.filter((asset) =>
+      assetMatchesDepartment(asset, request.departmentCode || "", requestedTeamCode) &&
+      assetMatchesLocation(asset, request.location || ""),
+    ),
+    [localAssets, request.departmentCode, requestedTeamCode, request.location],
+  );
   const selectedAsset = localAssets.find((asset) => asset.tag === assignment.assetTag);
   const locationParts = String(request.location || "").split("/").map((part) => part.trim()).filter(Boolean);
+
+  useEffect(() => {
+    if (assignment.assetTag && !assetOptions.some((asset) => asset.tag === assignment.assetTag)) {
+      onAssignAsset("");
+    }
+  }, [assignment.assetTag, assetOptions, onAssignAsset]);
 
   async function createAssetForRequest() {
     const name = assetName.trim() || request.title || "Request Asset";
@@ -2788,7 +2865,7 @@ function RequestPreviewModal({
                 value={assignment.assetTag}
                 onChange={(event) => {
                   const tag = event.target.value;
-                  const asset = assets.find((item) => item.tag === tag);
+                  const asset = localAssets.find((item) => item.tag === tag);
                   onAssignAsset(tag);
                   if (asset?.assignedTeamCode && !assignment.assignedTeamCode) onAssignTeam(asset.assignedTeamCode);
                 }}
@@ -2802,6 +2879,11 @@ function RequestPreviewModal({
                   </option>
                 ))}
               </select>
+              {isReviewed && !assetOptions.length && (
+                <span className="text-xs font-black text-amber-700">
+                  No assets match this request department/service team and location. Add an asset for this request or update the request hierarchy.
+                </span>
+              )}
             </label>
             <button type="button" disabled={!isReviewed} onClick={() => setShowAssetCreate((current) => !current)} className="h-10 rounded-lg border border-lagoon/30 bg-lagoon/5 px-3 text-xs font-black text-lagoon disabled:opacity-50">
               {showAssetCreate ? "Close Add Asset" : "+ Add Asset for this Request"}
