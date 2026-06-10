@@ -49,6 +49,8 @@ import { assetHealth, chartData, moduleStats } from "@/lib/demo-data";
 type ConsoleData = {
   live: boolean;
   sites: any[];
+  buildings: any[];
+  spaces: any[];
   assets: any[];
   requests: any[];
   workOrders: any[];
@@ -155,6 +157,11 @@ const moduleGroups: ModuleGroup[] = [
     icon: Building2,
     items: [
       { id: "assets", label: "Assets Management", icon: Building2, view: "assets-register" },
+      { id: "assetSetup", label: "Sites", icon: MapPinned, view: "asset-sites" },
+      { id: "assetSetup", label: "Buildings", icon: Building2, view: "asset-buildings" },
+      { id: "assetSetup", label: "Spaces", icon: Boxes, view: "asset-spaces" },
+      { id: "assetSetup", label: "Departments", icon: Users, view: "asset-departments" },
+      { id: "assetSetup", label: "Asset Categories", icon: PackagePlus, view: "asset-categories" },
       { id: "bulk", label: "Bulk Upload Assets", icon: Upload, view: "bulk-assets" },
       { id: "assets", label: "Asset Inventory Allocation", icon: ClipboardCheck, view: "asset-allocation" },
     ],
@@ -288,6 +295,7 @@ const assetRegisterColumns: [string, string][] = [
 const assetTemplateHeader = assetRegisterColumns.map(([, label]) => label).join(",");
 const modulePermissions: Record<string, string> = {
   assets: "assets.manage",
+  assetSetup: "assets.manage",
   work: "work.execute",
   helpdesk: "requests.view",
   ppm: "ppm.manage",
@@ -894,6 +902,22 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
           )}
           {canViewActive && active === "jobPlans" && <JobPlans jobPlans={records.jobPlans} services={records.services} departments={records.departments} saving={saving} isAdmin={isAdmin} submitJobPlan={(formData) => postRecord("/api/job-plans", formData, "Job plan")} deleteJobPlan={(id) => deleteRecord(`/api/job-plans?id=${encodeURIComponent(id)}`, "Job plan deleted.")} />}
           {canViewActive && active === "locations" && <Locations locations={records.locations} saving={saving} isAdmin={isAdmin} submitLocation={(formData) => postRecord("/api/locations", formData, "Location")} deleteLocation={(id) => deleteRecord(`/api/locations/${id}`, "Location deleted.")} />}
+          {canViewActive && active === "assetSetup" && (
+            <AssetHierarchySetup
+              view={activeView}
+              sites={records.sites ?? []}
+              buildings={records.buildings ?? []}
+              spaces={records.spaces ?? []}
+              departments={records.departments}
+              categories={records.categories}
+              saving={saving}
+              submitSite={(formData) => postRecord("/api/sites", formData, "Site")}
+              submitBuilding={(formData) => postRecord("/api/buildings", formData, "Building")}
+              submitSpace={(formData) => postRecord("/api/spaces", formData, "Space")}
+              submitDepartment={(formData) => postRecord("/api/departments", formData, "Department")}
+              submitCategory={(formData) => postRecord("/api/asset-categories", formData, "Asset category")}
+            />
+          )}
           {canViewActive && active === "ppm" && <Ppm ppms={records.ppms} assets={records.assets} workOrders={records.workOrders} saving={saving} isAdmin={isAdmin} submitPpm={(formData) => postRecord("/api/ppm", formData, "PPM")} updatePpm={(body) => patchRecord("/api/ppm", body, "PPM updated.")} deletePpm={(id) => deleteRecord(`/api/ppm?id=${encodeURIComponent(id)}`, "PPM deleted.")} />}
           {canViewActive && active === "inventory" && <Inventory inventory={records.inventory} saving={saving} isAdmin={isAdmin} submitInventory={(formData) => postRecord("/api/inventory", formData, "Inventory item")} deleteInventory={(id) => deleteRecord(`/api/inventory?id=${encodeURIComponent(id)}`, "Inventory item deleted.")} />}
           {canViewActive && active === "hse" && <Hse inspections={records.inspections} saving={saving} isAdmin={isAdmin} submitInspection={(formData) => postRecord("/api/inspections", formData, "Inspection")} deleteInspection={(id) => deleteRecord(`/api/inspections?id=${encodeURIComponent(id)}`, "Inspection deleted.")} />}
@@ -4805,6 +4829,171 @@ function SetupActions({ rows, labelKey, onEdit, onDelete, saving, isAdmin }: { r
         </div>
       ))}
     </div>
+  );
+}
+
+function AssetHierarchySetup({
+  view,
+  sites,
+  buildings,
+  spaces,
+  departments,
+  categories,
+  saving,
+  submitSite,
+  submitBuilding,
+  submitSpace,
+  submitDepartment,
+  submitCategory,
+}: {
+  view: string;
+  sites: any[];
+  buildings: any[];
+  spaces: any[];
+  departments: any[];
+  categories: any[];
+  saving: boolean;
+  submitSite: (formData: FormData) => void;
+  submitBuilding: (formData: FormData) => void;
+  submitSpace: (formData: FormData) => void;
+  submitDepartment: (formData: FormData) => void;
+  submitCategory: (formData: FormData) => void;
+}) {
+  const siteRows = sites.map((site) => ({
+    ...site,
+    buildingCount: site.buildings?.length ?? buildings.filter((building) => building.siteId === site.id).length,
+  }));
+  const buildingRows = buildings.map((building) => ({
+    ...building,
+    siteName: building.site?.name || sites.find((site) => site.id === building.siteId)?.name || "",
+  }));
+  const spaceRows = spaces.map((space) => ({
+    ...space,
+    buildingCode: space.building?.code || buildings.find((building) => building.id === space.buildingId)?.code || "",
+    siteName: space.building?.site?.name || "",
+  }));
+  const showSites = view === "asset-sites";
+  const showBuildings = view === "asset-buildings";
+  const showSpaces = view === "asset-spaces";
+  const showDepartments = view === "asset-departments";
+  const showCategories = view === "asset-categories";
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+      <div className="space-y-5">
+        {showSites && (
+          <Panel title="Sites" icon={MapPinned}>
+            <DataTable rows={siteRows} columns={[["name", "Site"], ["city", "City"], ["country", "Country"], ["type", "Type"], ["areaSqm", "Area sqm"], ["buildingCount", "Buildings"]]} />
+          </Panel>
+        )}
+        {showBuildings && (
+          <Panel title="Buildings" icon={Building2}>
+            <DataTable rows={buildingRows} columns={[["code", "Code"], ["name", "Building"], ["siteName", "Site"], ["floors", "Floors"], ["areaSqm", "Area sqm"]]} />
+          </Panel>
+        )}
+        {showSpaces && (
+          <Panel title="Spaces" icon={Boxes}>
+            <DataTable rows={spaceRows} columns={[["name", "Space"], ["buildingCode", "Building"], ["floor", "Floor"], ["type", "Type"], ["capacity", "Capacity"], ["areaSqm", "Area sqm"], ["occupancy", "Occupancy"]]} />
+          </Panel>
+        )}
+        {showDepartments && (
+          <Panel title="Departments" icon={Users}>
+            <DataTable rows={departments} columns={[["code", "Code"], ["name", "Department"], ["siteLocation", "Site"], ["description", "Description"]]} />
+          </Panel>
+        )}
+        {showCategories && (
+          <Panel title="Asset Categories" icon={PackagePlus}>
+            <DataTable rows={categories} columns={[["code", "Code"], ["name", "Category"], ["type", "Type"], ["defaultLifeYrs", "Life yrs"], ["statutory", "Statutory"], ["description", "Description"]]} />
+          </Panel>
+        )}
+      </div>
+      <div className="space-y-5">
+        {showSites && <SiteForm onSubmit={submitSite} saving={saving} />}
+        {showBuildings && <BuildingForm sites={sites} onSubmit={submitBuilding} saving={saving} />}
+        {showSpaces && <SpaceForm buildings={buildings} onSubmit={submitSpace} saving={saving} />}
+        {showDepartments && <DepartmentForm onSubmit={submitDepartment} saving={saving} />}
+        {showCategories && <ActionForm title="Add Asset Category" onSubmit={submitCategory} fields={["code", "name", "type", "defaultLifeYrs", "statutory", "description"]} saving={saving} />}
+      </div>
+    </section>
+  );
+}
+
+function SiteForm({ onSubmit, saving }: { onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    form.reset();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">Add Site</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="name" placeholder="Site name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="city" placeholder="City" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="country" defaultValue="Saudi Arabia" placeholder="Country" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="type" placeholder="Site type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="areaSqm" type="number" min="0" placeholder="Area sqm" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Site"}</button>
+      </div>
+    </form>
+  );
+}
+
+function BuildingForm({ sites, onSubmit, saving }: { sites: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    form.reset();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">Add Building</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="code" placeholder="Building code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="name" placeholder="Building name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="siteId" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select site</option>
+          {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+        </select>
+        <input name="site" placeholder="Or new site name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="floors" type="number" min="0" placeholder="Floors" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="areaSqm" type="number" min="0" placeholder="Area sqm" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Building"}</button>
+      </div>
+    </form>
+  );
+}
+
+function SpaceForm({ buildings, onSubmit, saving }: { buildings: any[]; onSubmit: (formData: FormData) => void; saving: boolean }) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await onSubmit(new FormData(form));
+    form.reset();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <h3 className="text-xl font-black">Add Space</h3>
+      <div className="mt-4 grid gap-3">
+        <input name="name" placeholder="Space / room name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <select name="buildingId" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <option value="">Select building</option>
+          {buildings.map((building) => <option key={building.id} value={building.id}>{building.code} - {building.name}</option>)}
+        </select>
+        <input name="buildingCode" placeholder="Or building code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="floor" placeholder="Floor" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="type" placeholder="Space type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="capacity" type="number" min="0" placeholder="Capacity" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="areaSqm" type="number" min="0" placeholder="Area sqm" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <input name="occupancy" type="number" min="0" placeholder="Occupancy" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+        <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Space"}</button>
+      </div>
+    </form>
   );
 }
 

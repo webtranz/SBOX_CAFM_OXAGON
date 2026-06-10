@@ -25,6 +25,12 @@ export const fallbackData = {
   sites: [
     { id: "demo-site", name: "King Abdullah Financial District", city: "Riyadh", country: "Saudi Arabia", type: "Mixed Use", areaSqm: 284000 },
   ],
+  buildings: [
+    { id: "demo-building", code: "TWA", name: "Tower A", siteId: "demo-site", floors: 40, areaSqm: 120000, site: { name: "King Abdullah Financial District" } },
+  ],
+  spaces: [
+    { id: "demo-space", name: "Executive Offices", floor: "18", type: "Office", capacity: 60, areaSqm: 1200, occupancy: 42, buildingId: "demo-building", building: { code: "TWA", name: "Tower A", site: { name: "King Abdullah Financial District" } } },
+  ],
   assets: [
     { id: "a1", tag: "AHU-RYD-01-004", name: "Air Handling Unit 4", category: "HVAC", system: "Cooling", criticality: "HIGH", status: "ACTIVE", conditionScore: 88 },
     { id: "a2", tag: "GEN-RYD-02-001", name: "Emergency Generator 1", category: "Power", system: "Electrical", criticality: "CRITICAL", status: "STANDBY", conditionScore: 91 },
