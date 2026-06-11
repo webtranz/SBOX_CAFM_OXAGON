@@ -2601,7 +2601,24 @@ function serviceRequestLocationLabel(location: any) {
 }
 
 function locationSelectLabel(location: any) {
-  return [location.code, location.description || location.room || location.building].filter(Boolean).join(" - ");
+  return [location.code, location.description || location.room || location.building, location.locationClass || location.type].filter(Boolean).join(" - ");
+}
+
+function locationOptionDetail(location: any) {
+  return [location.description, location.locationClass, location.type].filter(Boolean).join(" / ");
+}
+
+type SearchableOption = { value: string; label: string };
+
+function uniqueLocationOptions(rows: any[], valueFor: (location: any) => string, labelFor: (location: any, value: string) => string) {
+  return Array.from<SearchableOption>(
+    rows.reduce((map, location) => {
+      const value = String(valueFor(location) || "").trim();
+      if (!value || map.has(value)) return map;
+      map.set(value, { value, label: labelFor(location, value) });
+      return map;
+    }, new Map<string, SearchableOption>()).values(),
+  ).sort((first, second) => first.label.localeCompare(second.label, undefined, { numeric: true, sensitivity: "base" }));
 }
 
 function resolveLocationCode(locations: any[], value: string) {
@@ -2615,12 +2632,6 @@ function findLocationBySearch(locations: any[], value: string) {
   if (!search) return undefined;
   return locations.find((location) => location.code === search || locationSelectLabel(location) === search || serviceRequestLocationLabel(location) === search);
 }
-
-function sortedUnique(values: string[]) {
-  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean))).sort((first, second) => first.localeCompare(second, undefined, { numeric: true, sensitivity: "base" }));
-}
-
-type SearchableOption = { value: string; label: string };
 
 function SearchableDropdownField({
   value,
@@ -2760,20 +2771,31 @@ function ServiceRequestForm({ title, request, services, categories, departments,
   const filteredServices = useMemo(() => services.filter((service) => serviceMatchesDepartment(service, departmentCode)), [services, departmentCode]);
   const selectedService = services.find((service) => service.code === serviceCode);
   const selectedTeamCode = selectedService?.team?.code || selectedService?.teamCode || teams.find((team) => team.code === departmentCode)?.code || "";
-  const siteOptions = useMemo(() => sortedUnique(activeLocations.map((location) => location.site)), [activeLocations]);
-  const siteDropdownOptions = useMemo(() => siteOptions.map((site) => ({ value: site, label: site })), [siteOptions]);
-  const parentLocationOptions = useMemo(() => sortedUnique(activeLocations.filter((location) => !siteValue || location.site === siteValue).map((location) => location.parentLocation || location.zone || location.code)), [activeLocations, siteValue]);
-  const parentLocationDropdownOptions = useMemo(() => parentLocationOptions.map((parentLocation) => ({ value: parentLocation, label: parentLocation })), [parentLocationOptions]);
-  const buildingOptions = useMemo(
-    () => sortedUnique(activeLocations.filter((location) => (!siteValue || location.site === siteValue) && (!parentLocationValue || location.parentLocation === parentLocationValue || location.zone === parentLocationValue || location.code === parentLocationValue)).map((location) => location.building)),
+  const siteDropdownOptions = useMemo(
+    () => uniqueLocationOptions(activeLocations, (location) => location.site, (location, value) => [value, locationOptionDetail(location)].filter(Boolean).join(" - ")),
+    [activeLocations],
+  );
+  const parentLocationRows = useMemo(() => activeLocations.filter((location) => !siteValue || location.site === siteValue), [activeLocations, siteValue]);
+  const parentLocationDropdownOptions = useMemo(
+    () => uniqueLocationOptions(parentLocationRows, (location) => location.parentLocation || location.zone || location.code, (location, value) => [value, location.description || location.building, location.locationClass].filter(Boolean).join(" - ")),
+    [parentLocationRows],
+  );
+  const buildingRows = useMemo(
+    () => activeLocations.filter((location) => (!siteValue || location.site === siteValue) && (!parentLocationValue || location.parentLocation === parentLocationValue || location.zone === parentLocationValue || location.code === parentLocationValue)),
     [activeLocations, siteValue, parentLocationValue],
   );
-  const buildingDropdownOptions = useMemo(() => buildingOptions.map((building) => ({ value: building, label: building })), [buildingOptions]);
-  const floorOptions = useMemo(
-    () => sortedUnique(activeLocations.filter((location) => (!siteValue || location.site === siteValue) && (!parentLocationValue || location.parentLocation === parentLocationValue || location.zone === parentLocationValue || location.code === parentLocationValue) && (!buildingValue || location.building === buildingValue)).map((location) => location.floor)),
+  const buildingDropdownOptions = useMemo(
+    () => uniqueLocationOptions(buildingRows, (location) => location.building, (location, value) => [value, location.description, location.locationClass].filter(Boolean).join(" - ")),
+    [buildingRows],
+  );
+  const floorRows = useMemo(
+    () => activeLocations.filter((location) => (!siteValue || location.site === siteValue) && (!parentLocationValue || location.parentLocation === parentLocationValue || location.zone === parentLocationValue || location.code === parentLocationValue) && (!buildingValue || location.building === buildingValue)),
     [activeLocations, siteValue, parentLocationValue, buildingValue],
   );
-  const floorDropdownOptions = useMemo(() => floorOptions.map((floor) => ({ value: floor, label: floor })), [floorOptions]);
+  const floorDropdownOptions = useMemo(
+    () => uniqueLocationOptions(floorRows, (location) => location.floor, (location, value) => [value, location.description, location.locationClass].filter(Boolean).join(" - ")),
+    [floorRows],
+  );
   const finalLocationOptions = useMemo(
     () => activeLocations
       .filter((location) =>
