@@ -2549,7 +2549,38 @@ function assetMatchesDepartment(asset: any, departmentCode: string, assignedTeam
 
 function serviceMatchesDepartment(service: any, departmentCode: string) {
   if (!departmentCode) return true;
-  return [service.code, service.departmentCode, service.team?.code, service.teamCode].filter(Boolean).includes(departmentCode);
+  const scopeCodes = [service.code, service.departmentCode, service.team?.code, service.teamCode].filter(Boolean).map((code) => String(code).trim().toUpperCase());
+  return scopeCodes.includes(String(departmentCode).trim().toUpperCase());
+}
+
+function serviceScopeCodes(service: any) {
+  return [service.code, service.departmentCode, service.team?.code, service.teamCode]
+    .filter(Boolean)
+    .map((code) => String(code).trim().toUpperCase());
+}
+
+function categoryTokens(value: string) {
+  return String(value || "").toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+}
+
+function serviceMatchesCategory(service: any, categoryValue: string) {
+  const selected = String(categoryValue || "").trim().toLowerCase();
+  if (!selected) return false;
+  const serviceText = [service.category, service.name, service.code, service.description].filter(Boolean).join(" ").toLowerCase();
+  const selectedTokens = categoryTokens(categoryValue);
+  return serviceText === selected || serviceText.includes(selected) || selectedTokens.some((token) => token.length > 2 && serviceScopeCodes(service).includes(token));
+}
+
+function inferServiceFromCategory(categoryValue: string, services: any[], departments: any[]) {
+  const selectedTokens = categoryTokens(categoryValue);
+  const departmentCode = departments
+    .map((department) => String(department.code || "").trim().toUpperCase())
+    .find((code) => selectedTokens.includes(code));
+  const categoryService = services.find((service) => serviceMatchesCategory(service, categoryValue));
+  const scopedService = departmentCode ? services.find((service) => serviceScopeCodes(service).includes(departmentCode)) : undefined;
+  const service = categoryService || scopedService;
+  const inferredDepartmentCode = departmentCode || service?.team?.code || service?.teamCode || service?.departmentCode || "";
+  return { departmentCode: inferredDepartmentCode, serviceCode: service?.code || "" };
 }
 
 function scopedAssetOptions(assets: any[], departmentCode: string, assignedTeamCode: string, location: string) {
@@ -2783,6 +2814,13 @@ function ServiceRequestForm({ title, request, services, categories, departments,
     { value: "HIGH", label: "High", tone: "bg-orange-50 text-orange-700 border-orange-200" },
     { value: "CRITICAL", label: "Critical", tone: "bg-rose-50 text-rose-700 border-rose-200" },
   ];
+  function applyCategorySelection(value: string) {
+    setCategoryValue(value);
+    const inferred = inferServiceFromCategory(value, services, departments);
+    if (inferred.departmentCode) setDepartmentCode(inferred.departmentCode);
+    if (inferred.serviceCode) setServiceCode(inferred.serviceCode);
+  }
+
   async function createCategory() {
     const name = categoryName.trim();
     if (!name) return;
@@ -2795,7 +2833,7 @@ function ServiceRequestForm({ title, request, services, categories, departments,
     const result = await response.json();
     if (response.ok) {
       setLocalCategories((current) => [...current.filter((item) => item.code !== result.code), result]);
-      setCategoryValue(result.name);
+      applyCategorySelection(result.name);
       setCategoryName("");
       setCategoryCode("");
       setShowCategoryCreate(false);
@@ -2930,7 +2968,7 @@ function ServiceRequestForm({ title, request, services, categories, departments,
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="grid gap-2">
-          <select name="category" value={categoryValue} onChange={(event) => setCategoryValue(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <select name="category" value={categoryValue} onChange={(event) => applyCategorySelection(event.target.value)} className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
             <option value="">Category</option>
             {categoryOptions.map((category) => (
               <option key={category} value={category}>{category}</option>
