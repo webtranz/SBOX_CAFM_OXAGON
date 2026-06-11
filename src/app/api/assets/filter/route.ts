@@ -80,6 +80,7 @@ export async function GET(request: Request) {
   const filterField = url.searchParams.get("filterField")?.trim() || "";
   const filterValue = url.searchParams.get("filterValue")?.trim() || "";
   const locationCode = url.searchParams.get("locationCode")?.trim() || "";
+  const locationQuery = url.searchParams.get("locationQuery")?.trim() || "";
   const classValue = url.searchParams.get("class")?.trim() || "";
   const status = url.searchParams.get("status")?.trim() || "";
   const pageInput = Number(url.searchParams.get("page") || 1);
@@ -114,11 +115,43 @@ export async function GET(request: Request) {
     ...(building ? { buildingCode: building } : {}),
     ...(floor ? { floor } : {}),
     ...(room ? { room } : {}),
-    ...(locationCode ? { locationCode } : {}),
     ...(status ? { assetStatusText: status } : {}),
     ...(role === "supervisor" || role === "technician" ? { departmentCode: user?.department || "__none__" } : {}),
   };
   const andFilters: any[] = [];
+  if (locationCode === "__undefined__") {
+    andFilters.push({
+      AND: [
+        { OR: [{ locationCode: null }, { locationCode: "" }] },
+        { OR: [{ locationDesc: null }, { locationDesc: "" }] },
+        { OR: [{ buildingCode: null }, { buildingCode: "" }] },
+        { OR: [{ floor: null }, { floor: "" }] },
+        { OR: [{ room: null }, { room: "" }] },
+      ],
+    });
+  } else if (locationCode) {
+    andFilters.push({
+      OR: [
+        { locationCode: { equals: locationCode, mode: "insensitive" } },
+        { locationDesc: { contains: locationCode, mode: "insensitive" } },
+        { buildingCode: { contains: locationCode, mode: "insensitive" } },
+        { floor: { contains: locationCode, mode: "insensitive" } },
+        { room: { contains: locationCode, mode: "insensitive" } },
+      ],
+    });
+  }
+  if (locationQuery) {
+    andFilters.push({
+      OR: [
+        { locationCode: { contains: locationQuery, mode: "insensitive" } },
+        { locationDesc: { contains: locationQuery, mode: "insensitive" } },
+        { buildingCode: { contains: locationQuery, mode: "insensitive" } },
+        { floor: { contains: locationQuery, mode: "insensitive" } },
+        { room: { contains: locationQuery, mode: "insensitive" } },
+        { siteCode: { contains: locationQuery, mode: "insensitive" } },
+      ],
+    });
+  }
   if (query) {
     andFilters.push({
       OR: [

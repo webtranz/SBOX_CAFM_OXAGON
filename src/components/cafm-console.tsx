@@ -1220,6 +1220,7 @@ function Assets({
   const [filterField, setFilterField] = useState("equipmentDesc");
   const [filterValue, setFilterValue] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
+  const [locationSearch, setLocationSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
@@ -1250,14 +1251,38 @@ function Assets({
   const selectedVisibleAssets = visibleAssets.filter((asset) => selectedAssetIds.has(asset.id));
   const allVisibleSelected = Boolean(visibleAssets.length) && selectedVisibleAssets.length === visibleAssets.length;
   const someVisibleSelected = selectedVisibleAssets.length > 0 && !allVisibleSelected;
-  const locationOptions = Array.from(new Set([...assetRows.map((asset) => asset.locationCode).filter(Boolean), ...locations.map((location) => location.code).filter(Boolean)]));
+  const locationOptionEntries: [string, { value: string; label: string }][] = [
+    ...locations
+      .filter((location) => Boolean(location.code))
+      .map((location) => [
+        String(location.code),
+        {
+          value: String(location.code),
+          label: `${location.code} - ${location.description || location.parentLocation || location.site || location.building || "Location"}`,
+        },
+      ] as [string, { value: string; label: string }]),
+    ...assetRows
+      .map((asset) => {
+        const value = asset.locationCode || [asset.buildingCode, asset.floor, asset.room].filter(Boolean).join(" / ");
+        if (!value) return null;
+        return [
+          String(value),
+          {
+            value: String(value),
+            label: [asset.locationCode, asset.locationDesc, asset.buildingCode, asset.floor, asset.room].filter(Boolean).join(" - "),
+          },
+        ] as [string, { value: string; label: string }];
+      })
+      .filter((entry): entry is [string, { value: string; label: string }] => Boolean(entry)),
+  ];
+  const locationOptions = Array.from(new Map(locationOptionEntries).values());
   const classOptions = Array.from(new Set([...assetRows.map((asset) => asset.classCode || asset.category).filter(Boolean)]));
   const statusOptions = Array.from(new Set(assetRows.map((asset) => asset.assetStatusText).filter(Boolean)));
 
   useEffect(() => {
     setPage(1);
     assetScrollRef.current?.scrollTo({ top: 0 });
-  }, [query, filterField, filterValue, locationFilter, classFilter, statusFilter, columnFilters]);
+  }, [query, filterField, filterValue, locationFilter, locationSearch, classFilter, statusFilter, columnFilters]);
 
   useEffect(() => {
     setAssetRowsSource(assets);
@@ -1280,6 +1305,7 @@ function Assets({
           filterField,
           filterValue,
           locationCode: locationFilter,
+          locationQuery: locationSearch,
           class: classFilter,
           status: statusFilter,
         });
@@ -1305,7 +1331,7 @@ function Assets({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [page, query, filterField, filterValue, locationFilter, classFilter, statusFilter]);
+  }, [page, query, filterField, filterValue, locationFilter, locationSearch, classFilter, statusFilter, columnFilters]);
 
   function handleAssetScroll(event: UIEvent<HTMLDivElement>) {
     const element = event.currentTarget;
@@ -1408,11 +1434,13 @@ function Assets({
             </div>
           </div>
         )}
-        <div className="mb-4 grid gap-3 rounded-lg bg-slate-50 p-3 md:grid-cols-4">
+        <div className="mb-4 grid gap-3 rounded-lg bg-slate-50 p-3 md:grid-cols-5">
           <select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold">
             <option value="">LOCATION</option>
-            {locationOptions.map((location) => <option key={location} value={location}>{location}</option>)}
+            <option value="__undefined__">Undefined location</option>
+            {locationOptions.map((location) => <option key={location.value} value={location.value}>{location.label}</option>)}
           </select>
+          <input value={locationSearch} onChange={(event) => setLocationSearch(event.target.value)} placeholder="Search location code / description" className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-lagoon" />
           <select value={classFilter} onChange={(event) => setClassFilter(event.target.value)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold">
             <option value="">CLASS / CATEGORY</option>
             {classOptions.map((assetClass) => <option key={assetClass} value={assetClass}>{assetClass}</option>)}
@@ -1421,7 +1449,7 @@ function Assets({
             <option value="">ASSETSTATUS</option>
             {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
-          <button type="button" onClick={() => { setLocationFilter(""); setClassFilter(""); setStatusFilter(""); setColumnFilters({}); setFilterValue(""); }} className="h-11 rounded-lg bg-white px-3 text-sm font-black text-lagoon">Clear Filters</button>
+          <button type="button" onClick={() => { setLocationFilter(""); setLocationSearch(""); setClassFilter(""); setStatusFilter(""); setColumnFilters({}); setFilterValue(""); }} className="h-11 rounded-lg bg-white px-3 text-sm font-black text-lagoon">Clear Filters</button>
         </div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm font-black text-slate-600">
           <span>Showing {visibleAssets.length.toLocaleString()} of {assetTotal.toLocaleString()} assets / Selected {selectedAssetIds.size.toLocaleString()} / Column filters {activeColumnFilterCount}</span>
