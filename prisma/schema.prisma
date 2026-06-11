@@ -214,6 +214,15 @@ model RosterEntry {
   supervisor     String
   status         String   @default("Draft")
   source         String   @default("Manual")
+  attendanceStatus String @default("Not marked")
+  actualStartTime String  @default("")
+  actualEndTime   String  @default("")
+  plannedWorkingHours Float @default(0)
+  workedHours     Float   @default(0)
+  overtimeHours   Float   @default(0)
+  attendanceNotes String  @default("")
+  markedBy        String  @default("")
+  markedAt        DateTime?
   employee       Employee? @relation("EmployeeRoster", fields: [employeeId], references: [id])
   team           Team?     @relation("TeamRoster", fields: [teamId], references: [id])
   shift          ShiftMaster @relation(fields: [shiftId], references: [id])

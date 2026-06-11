@@ -38,6 +38,15 @@ const rosterSchema = z.object({
   source: z.string().default("Manual"),
 });
 
+const attendanceSchema = z.object({
+  rosterId: z.string().min(1),
+  attendanceStatus: z.enum(["Present", "Absent"]).default("Present"),
+  actualStartTime: z.string().optional(),
+  actualEndTime: z.string().optional(),
+  plannedWorkingHours: z.coerce.number().min(0).max(24).optional(),
+  attendanceNotes: z.string().optional(),
+});
+
 const eligibilityByShift: Record<string, string[]> = {
   Day: ["Day only", "Day & Night"],
   Night: ["Night only", "Day & Night"],
@@ -49,6 +58,20 @@ function dayStart(value: string | Date) {
   const date = value instanceof Date ? new Date(value) : parseISO(value);
   date.setHours(0, 0, 0, 0);
   return date;
+}
+
+function minutesFromTime(value: string) {
+  const [hours, minutes] = value.split(":").map((part) => Number(part));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+  return (hours * 60) + minutes;
+}
+
+function hoursBetween(startTime: string, endTime: string, breakMinutes = 0) {
+  if (!startTime || !endTime) return 0;
+  const start = minutesFromTime(startTime);
+  let end = minutesFromTime(endTime);
+  if (end <= start) end += 24 * 60;
+  return Math.max(0, Number(((end - start - breakMinutes) / 60).toFixed(2)));
 }
 
 function csv(rows: Record<string, unknown>[]) {
@@ -143,6 +166,15 @@ async function rosterRows() {
     Location: row.locationZone,
     Supervisor: row.supervisor,
     Status: row.status,
+    Attendance: row.attendanceStatus,
+    PlannedHours: row.plannedWorkingHours,
+    ActualStart: row.actualStartTime,
+    ActualEnd: row.actualEndTime,
+    WorkedHours: row.workedHours,
+    OvertimeHours: row.overtimeHours,
+    MarkedBy: row.markedBy,
+    MarkedAt: row.markedAt ? format(row.markedAt, "yyyy-MM-dd HH:mm") : "",
+    Notes: row.attendanceNotes,
     Source: row.source,
   }));
 }
@@ -159,6 +191,8 @@ export async function GET(request: Request) {
     if (report === "employee-history") return row.Assignment === "Employee";
     if (report === "team-history") return row.Assignment === "Service Team";
     if (report === "coverage") return true;
+    if (report === "worked-hours") return Number(row.WorkedHours || 0) > 0;
+    if (report === "overtime") return Number(row.OvertimeHours || 0) > 0;
     return true;
   });
   if (formatType === "pdf") {
@@ -207,9 +241,44 @@ export async function POST(request: Request) {
     if (module === "roster") {
       const input = rosterSchema.parse(body);
       await validateRoster(input);
-      const record = await prisma.rosterEntry.create({ data: { ...input, date: dayStart(input.date), employeeId: input.assignmentType === "Employee" ? input.employeeId : null, teamId: input.assignmentType === "Service Team" ? input.teamId : null } });
+      const shift = await prisma.shiftMaster.findUniqueOrThrow({ where: { id: input.shiftId } });
+      const plannedWorkingHours = hoursBetween(shift.startTime, shift.endTime, shift.breakDuration);
+      const record = await prisma.rosterEntry.create({ data: { ...input, date: dayStart(input.date), plannedWorkingHours, employeeId: input.assignmentType === "Employee" ? input.employeeId : null, teamId: input.assignmentType === "Service Team" ? input.teamId : null } });
       await auditAction({ user, action: "ROSTER_SAVE", entity: "roster_entry", entityId: record.id, details: { input } });
       return NextResponse.json(record, { status: 201 });
+    }
+
+    if (module === "attendance") {
+      const input = attendanceSchema.parse(body);
+      const roster = await prisma.rosterEntry.findUnique({
+        where: { id: input.rosterId },
+        include: { employee: true, team: true, shift: true },
+      });
+      if (!roster) throw new Error("Roster entry not found.");
+      if (input.attendanceStatus === "Present" && (!input.actualStartTime || !input.actualEndTime)) {
+        throw new Error("Actual start and end time are required when marking present.");
+      }
+      const defaultPlannedHours = roster.plannedWorkingHours || hoursBetween(roster.shift.startTime, roster.shift.endTime, roster.shift.breakDuration);
+      const plannedWorkingHours = input.plannedWorkingHours ?? defaultPlannedHours;
+      const workedHours = input.attendanceStatus === "Present" ? hoursBetween(input.actualStartTime || "", input.actualEndTime || "", 0) : 0;
+      const overtimeHours = input.attendanceStatus === "Present" ? Math.max(0, Number((workedHours - plannedWorkingHours).toFixed(2))) : 0;
+      const record = await prisma.rosterEntry.update({
+        where: { id: input.rosterId },
+        data: {
+          attendanceStatus: input.attendanceStatus,
+          actualStartTime: input.actualStartTime || "",
+          actualEndTime: input.actualEndTime || "",
+          plannedWorkingHours,
+          workedHours,
+          overtimeHours,
+          attendanceNotes: input.attendanceNotes || "",
+          markedBy: user.name || user.email,
+          markedAt: new Date(),
+        },
+        include: { employee: true, team: true, shift: true },
+      });
+      await auditAction({ user, action: "ROSTER_ATTENDANCE_MARK", entity: "roster_entry", entityId: record.id, details: { input, workedHours, overtimeHours } });
+      return NextResponse.json(record);
     }
 
     if (module === "finalize") {
@@ -237,7 +306,8 @@ export async function POST(request: Request) {
         const date = addDays(start, index);
         const rosterInput = rosterSchema.parse({ ...body, shiftId: shift.id, date: format(date, "yyyy-MM-dd"), status: "Draft", source: `Rotation: ${rotation.name}` });
         await validateRoster(rosterInput);
-        created.push(await prisma.rosterEntry.create({ data: { ...rosterInput, date, employeeId: rosterInput.assignmentType === "Employee" ? rosterInput.employeeId : null, teamId: rosterInput.assignmentType === "Service Team" ? rosterInput.teamId : null } }));
+        const plannedWorkingHours = hoursBetween(shift.startTime, shift.endTime, shift.breakDuration);
+        created.push(await prisma.rosterEntry.create({ data: { ...rosterInput, date, plannedWorkingHours, employeeId: rosterInput.assignmentType === "Employee" ? rosterInput.employeeId : null, teamId: rosterInput.assignmentType === "Service Team" ? rosterInput.teamId : null } }));
       }
       return NextResponse.json({ ok: true, created });
     }

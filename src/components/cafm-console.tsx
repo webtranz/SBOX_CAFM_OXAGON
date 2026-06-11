@@ -9,6 +9,7 @@ import {
   Boxes,
   Building2,
   CalendarCheck,
+  Clock,
   ClipboardCheck,
   FileText,
   Gauge,
@@ -6494,10 +6495,12 @@ function ShiftRotationModule({
 }) {
   const [assignmentType, setAssignmentType] = useState("Employee");
   const [generateAssignmentType, setGenerateAssignmentType] = useState("Employee");
+  const [attendanceRosterId, setAttendanceRosterId] = useState("");
   const draftRoster = shiftRotation.roster.filter((row) => row.status !== "Finalized");
   const finalizedRoster = shiftRotation.roster.filter((row) => row.status === "Finalized");
   const supervisorOptions = [...users.map((item) => item.name || item.email), ...teams.map((team) => team.supervisor)].filter(Boolean);
   const locationOptions = locations.map((location) => ({ value: location.code, label: `${location.code} - ${location.description || location.site || location.building}` }));
+  const selectedAttendanceRoster = shiftRotation.roster.find((row) => row.id === attendanceRosterId) || shiftRotation.roster[0];
   const rosterRows = shiftRotation.roster.map((row) => ({
     id: row.id,
     date: formatDateCell(row.date),
@@ -6508,14 +6511,50 @@ function ShiftRotationModule({
     locationZone: row.locationZone,
     supervisor: row.supervisor,
     status: row.status,
+    attendanceStatus: row.attendanceStatus || "Not marked",
+    plannedWorkingHours: row.plannedWorkingHours || "",
+    workedHours: row.workedHours || "",
+    overtimeHours: row.overtimeHours || "",
     source: row.source,
   }));
+  const attendanceRows = shiftRotation.roster
+    .filter((row) => row.attendanceStatus && row.attendanceStatus !== "Not marked")
+    .map((row) => ({
+      id: row.id,
+      date: formatDateCell(row.date),
+      assignee: row.employee?.name || row.team?.name || "-",
+      assignment: row.assignmentType,
+      shift: `${row.shift?.name || "-"} / ${row.shift?.shiftType || "-"}`,
+      attendanceStatus: row.attendanceStatus,
+      actualStartTime: row.actualStartTime,
+      actualEndTime: row.actualEndTime,
+      plannedWorkingHours: row.plannedWorkingHours,
+      workedHours: row.workedHours,
+      overtimeHours: row.overtimeHours,
+      markedBy: row.markedBy,
+      markedAt: row.markedAt ? formatDateCell(row.markedAt) : "",
+      attendanceNotes: row.attendanceNotes,
+    }));
+  const totalWorkedHours = attendanceRows.reduce((sum, row) => sum + Number(row.workedHours || 0), 0);
+  const totalOvertimeHours = attendanceRows.reduce((sum, row) => sum + Number(row.overtimeHours || 0), 0);
 
   async function handleFinalize() {
     const response = await fetch("/api/shift-rotation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ module: "finalize", ids: draftRoster.map((row) => row.id) }),
+    });
+    await response.json().catch(() => ({}));
+    await refreshData();
+  }
+
+  async function handleAttendance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const response = await fetch("/api/shift-rotation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(formData.entries())),
     });
     await response.json().catch(() => ({}));
     await refreshData();
@@ -6537,6 +6576,8 @@ function ShiftRotationModule({
         <a href="/api/shift-rotation?report=team-history&format=excel" className="rounded-lg bg-white px-3 py-2 text-center text-xs font-black text-lagoon shadow-sm">Service team shift history</a>
         <a href="/api/shift-rotation?report=coverage&format=excel" className="rounded-lg bg-white px-3 py-2 text-center text-xs font-black text-lagoon shadow-sm">Day/night coverage</a>
         <a href="/api/shift-rotation?report=monthly&format=pdf" className="rounded-lg bg-white px-3 py-2 text-center text-xs font-black text-lagoon shadow-sm">Monthly roster PDF</a>
+        <a href="/api/shift-rotation?report=worked-hours&format=excel" className="rounded-lg bg-white px-3 py-2 text-center text-xs font-black text-lagoon shadow-sm">Worked hours Excel</a>
+        <a href="/api/shift-rotation?report=overtime&format=pdf" className="rounded-lg bg-white px-3 py-2 text-center text-xs font-black text-lagoon shadow-sm">Overtime PDF</a>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -6608,8 +6649,38 @@ function ShiftRotationModule({
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={saving || !draftRoster.length} onClick={handleFinalize} className="rounded-lg bg-ink px-4 py-2 text-sm font-black text-white disabled:bg-slate-300">Finalize Draft Roster</button>
         <span className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-black text-slate-600">Draft {draftRoster.length} / Finalized {finalizedRoster.length}</span>
+        <span className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-black text-slate-600">Worked {totalWorkedHours.toFixed(2)} hrs / Overtime {totalOvertimeHours.toFixed(2)} hrs</span>
       </div>
-      <DataTable rows={rosterRows} columns={[["date", "Date"], ["assignment", "Assignment"], ["assignee", "Employee / Team"], ["shift", "Shift"], ["type", "Type"], ["locationZone", "Location / Zone"], ["supervisor", "Supervisor"], ["status", "Status"], ["source", "Source"]]} />
+
+      <form key={selectedAttendanceRoster?.id ?? "attendance"} onSubmit={handleAttendance} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+        <input type="hidden" name="module" value="attendance" />
+        <h3 className="text-lg font-black">Mark Shift Attendance</h3>
+        <div className="grid gap-3 md:grid-cols-3">
+          <RequiredLabel label="Employee / service team roster">
+            <select name="rosterId" required value={selectedAttendanceRoster?.id ?? ""} onChange={(event) => setAttendanceRosterId(event.target.value)} className={HOUSING_FIELD_CLASS}>
+              {shiftRotation.roster.map((row) => (
+                <option key={row.id} value={row.id}>{formatDateCell(row.date)} - {row.employee?.name || row.team?.name || "-"} - {row.shift?.shiftType || row.shift?.name}</option>
+              ))}
+            </select>
+          </RequiredLabel>
+          <RequiredLabel label="Attendance status"><select name="attendanceStatus" required className={HOUSING_FIELD_CLASS}><option>Present</option><option>Absent</option></select></RequiredLabel>
+          <RequiredLabel label="Working hours"><input name="plannedWorkingHours" type="number" min="0" max="24" step="0.25" defaultValue={selectedAttendanceRoster?.plannedWorkingHours || selectedAttendanceRoster?.employee?.maxHoursPerDay || selectedAttendanceRoster?.team?.maxHoursPerDay || 8} className={HOUSING_FIELD_CLASS} /></RequiredLabel>
+          <RequiredLabel label="Actual start time"><input name="actualStartTime" type="time" defaultValue={selectedAttendanceRoster?.shift?.startTime || ""} className={HOUSING_FIELD_CLASS} /></RequiredLabel>
+          <RequiredLabel label="Actual end time"><input name="actualEndTime" type="time" defaultValue={selectedAttendanceRoster?.shift?.endTime || ""} className={HOUSING_FIELD_CLASS} /></RequiredLabel>
+          <input name="attendanceNotes" placeholder="Attendance notes" className={HOUSING_FIELD_CLASS} />
+        </div>
+        <button disabled={saving || !shiftRotation.roster.length} className="h-10 rounded-lg bg-lagoon text-sm font-black text-white disabled:bg-slate-400">Mark Present / Save Attendance</button>
+      </form>
+
+      <DataTable
+        rows={rosterRows}
+        columns={[["date", "Date"], ["assignment", "Assignment"], ["assignee", "Employee / Team"], ["shift", "Shift"], ["type", "Type"], ["locationZone", "Location / Zone"], ["supervisor", "Supervisor"], ["status", "Status"], ["attendanceStatus", "Attendance"], ["plannedWorkingHours", "Working hrs"], ["workedHours", "Worked"], ["overtimeHours", "Overtime"], ["source", "Source"]]}
+        actions={(row) => <button type="button" onClick={() => setAttendanceRosterId(row.id)} className="rounded-lg bg-leaf px-3 py-2 text-xs font-black text-white">Mark Present</button>}
+      />
+
+      <Panel title="Worked Hours & Overtime Log" icon={Clock}>
+        <DataTable rows={attendanceRows} columns={[["date", "Date"], ["assignee", "Employee / Team"], ["assignment", "Type"], ["shift", "Shift"], ["attendanceStatus", "Attendance"], ["actualStartTime", "Start"], ["actualEndTime", "End"], ["plannedWorkingHours", "Working hrs"], ["workedHours", "Worked hrs"], ["overtimeHours", "Overtime"], ["markedBy", "Marked by"], ["markedAt", "Marked at"], ["attendanceNotes", "Notes"]]} />
+      </Panel>
     </div>
   );
 }
