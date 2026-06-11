@@ -671,6 +671,22 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
     setSaving(false);
   }
 
+  async function deleteAssets(ids: string[]) {
+    setSaving(true);
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        const response = await fetch(`/api/assets/${id}`, { method: "DELETE" });
+        const result = await response.json().catch(() => ({}));
+        return { ok: response.ok, message: cleanMessage(result.message ?? "Delete failed.") };
+      }),
+    );
+    const deleted = results.filter((result) => result.ok).length;
+    const failed = results.length - deleted;
+    setToast(failed ? `${deleted} assets deleted. ${failed} failed: ${results.find((result) => !result.ok)?.message}` : `${deleted} assets deleted.`);
+    if (deleted) await refreshData();
+    setSaving(false);
+  }
+
   async function convertRequestToWorkOrder(id: string, assignment: { assignedTeamCode?: string; assignedToEmail?: string; assetTag?: string } = {}) {
     setSaving(true);
     const response = await fetch(`/api/service-requests/${id}/convert-work-order`, {
@@ -868,6 +884,7 @@ export function CafmConsole({ data, user }: { data: ConsoleData; user: { id?: st
               canManageAssets={can("assets.manage")}
               isAdmin={isAdmin}
               deleteAsset={(id) => deleteRecord(`/api/assets/${id}`, "Asset deleted.")}
+              deleteAssets={deleteAssets}
             />
           )}
           {canViewActive && active === "work" && (
@@ -1161,6 +1178,7 @@ function Assets({
   canManageAssets,
   isAdmin,
   deleteAsset,
+  deleteAssets,
   saving,
 }: {
   assets: any[];
@@ -1178,6 +1196,7 @@ function Assets({
   canManageAssets: boolean;
   isAdmin: boolean;
   deleteAsset: (id: string) => void;
+  deleteAssets: (ids: string[]) => Promise<void>;
   saving: boolean;
 }) {
   const [previewAsset, setPreviewAsset] = useState<any | null>(null);
@@ -1189,6 +1208,8 @@ function Assets({
   const [locationFilter, setLocationFilter] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [assetRowsSource, setAssetRowsSource] = useState<any[]>(assets);
   const [assetTotal, setAssetTotal] = useState(assets.length);
@@ -1211,6 +1232,10 @@ function Assets({
   const hasMoreAssets = assetRowsSource.length < assetTotal;
   const visibleAssets = assetRows;
   const filterOptions = assetRegisterColumns;
+  const activeColumnFilterCount = Object.values(columnFilters).filter((value) => value.trim()).length;
+  const selectedVisibleAssets = visibleAssets.filter((asset) => selectedAssetIds.has(asset.id));
+  const allVisibleSelected = Boolean(visibleAssets.length) && selectedVisibleAssets.length === visibleAssets.length;
+  const someVisibleSelected = selectedVisibleAssets.length > 0 && !allVisibleSelected;
   const locationOptions = Array.from(new Set([...assetRows.map((asset) => asset.locationCode).filter(Boolean), ...locations.map((location) => location.code).filter(Boolean)]));
   const classOptions = Array.from(new Set([...assetRows.map((asset) => asset.classCode || asset.category).filter(Boolean)]));
   const statusOptions = Array.from(new Set(assetRows.map((asset) => asset.assetStatusText).filter(Boolean)));
@@ -1218,12 +1243,16 @@ function Assets({
   useEffect(() => {
     setPage(1);
     assetScrollRef.current?.scrollTo({ top: 0 });
-  }, [query, filterField, filterValue, locationFilter, classFilter, statusFilter]);
+  }, [query, filterField, filterValue, locationFilter, classFilter, statusFilter, columnFilters]);
 
   useEffect(() => {
     setAssetRowsSource(assets);
     setAssetTotal((current) => Math.max(current, assets.length));
   }, [assets]);
+
+  useEffect(() => {
+    setSelectedAssetIds((current) => new Set(Array.from(current).filter((id) => assetRowsSource.some((asset) => asset.id === id))));
+  }, [assetRowsSource]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1239,6 +1268,10 @@ function Assets({
           locationCode: locationFilter,
           class: classFilter,
           status: statusFilter,
+        });
+        Object.entries(columnFilters).forEach(([field, value]) => {
+          const trimmed = value.trim();
+          if (trimmed) params.set(`column_${field}`, trimmed);
         });
         const response = await fetch(`/api/assets/filter?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         if (response.ok) {
@@ -1269,15 +1302,62 @@ function Assets({
     }
   }
 
+  function updateColumnFilter(field: string, value: string) {
+    setColumnFilters((current) => {
+      const next = { ...current, [field]: value };
+      if (!value.trim()) delete next[field];
+      return next;
+    });
+  }
+
+  function toggleAssetSelection(id: string, checked: boolean) {
+    setSelectedAssetIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleVisibleAssets(checked: boolean) {
+    setSelectedAssetIds((current) => {
+      const next = new Set(current);
+      visibleAssets.forEach((asset) => {
+        if (checked) next.add(asset.id);
+        else next.delete(asset.id);
+      });
+      return next;
+    });
+  }
+
+  async function bulkDeleteSelectedAssets() {
+    const ids = Array.from(selectedAssetIds);
+    if (!ids.length) return;
+    await deleteAssets(ids);
+    setSelectedAssetIds(new Set());
+  }
+
   return (
     <section className="grid gap-5">
       <Panel title="Assets" icon={Building2}>
         <ReportButtons type="assets" label="Assets report" />
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-          <button type="button" onClick={() => setFilterOpen((current) => !current)} className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white">Filters</button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setFilterOpen((current) => !current)} className="rounded-lg bg-lagoon px-4 py-3 text-sm font-black text-white">Filters</button>
+            {isAdmin && (
+              <button
+                type="button"
+                disabled={saving || !selectedAssetIds.size}
+                onClick={bulkDeleteSelectedAssets}
+                className="rounded-lg bg-coral px-4 py-3 text-sm font-black text-white disabled:bg-slate-300"
+              >
+                Delete Selected ({selectedAssetIds.size})
+              </button>
+            )}
+          </div>
           <div className="flex min-w-[280px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 lg:max-w-md">
             <Search size={18} className="text-slate-400" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Assets" className="h-11 w-full outline-none" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search all asset fields" className="h-11 w-full outline-none" />
           </div>
           {canManageAssets && <button type="button" onClick={() => setCreateOpen(true)} className="flex h-11 items-center gap-2 rounded-lg bg-lagoon px-4 text-sm font-black text-white"><Plus size={16} /> Asset</button>}
         </div>
@@ -1292,6 +1372,25 @@ function Assets({
               <input value={filterValue} onChange={(event) => setFilterValue(event.target.value)} placeholder="Pick up a property to filter" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
               <button type="button" onClick={() => { setFilterValue(""); setFilterOpen(false); }} className="rounded-lg border border-slate-200 px-4 text-sm font-black text-slate-600">Cancel</button>
               <button type="button" onClick={() => setFilterOpen(false)} className="rounded-lg bg-lagoon px-4 text-sm font-black text-white">Apply</button>
+            </div>
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-black">Column filters</p>
+                <button type="button" onClick={() => setColumnFilters({})} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-lagoon">Clear Column Filters</button>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
+                {assetRegisterColumns.map(([key, label]) => (
+                  <label key={key} className="grid gap-1 text-xs font-black uppercase text-slate-500">
+                    {label}
+                    <input
+                      value={columnFilters[key] ?? ""}
+                      onChange={(event) => updateColumnFilter(key, event.target.value)}
+                      placeholder={`Search ${label}`}
+                      className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold normal-case text-slate-700 outline-none focus:border-lagoon"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -1308,17 +1407,26 @@ function Assets({
             <option value="">ASSETSTATUS</option>
             {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
-          <button type="button" onClick={() => { setLocationFilter(""); setClassFilter(""); setStatusFilter(""); }} className="h-11 rounded-lg bg-white px-3 text-sm font-black text-lagoon">Clear Filters</button>
+          <button type="button" onClick={() => { setLocationFilter(""); setClassFilter(""); setStatusFilter(""); setColumnFilters({}); setFilterValue(""); }} className="h-11 rounded-lg bg-white px-3 text-sm font-black text-lagoon">Clear Filters</button>
         </div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm font-black text-slate-600">
-          <span>Showing {visibleAssets.length.toLocaleString()} of {assetTotal.toLocaleString()} assets</span>
+          <span>Showing {visibleAssets.length.toLocaleString()} of {assetTotal.toLocaleString()} assets / Selected {selectedAssetIds.size.toLocaleString()} / Column filters {activeColumnFilterCount}</span>
           {assetLoading && <span className="text-lagoon">Loading assets...</span>}
         </div>
         <div ref={assetScrollRef} onScroll={handleAssetScroll} className="max-h-[70vh] max-w-full overflow-auto rounded-lg border border-slate-200 scrollbar-thin">
           <table className="min-w-[3600px] border-collapse bg-white text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-3 py-3"><input type="checkbox" /></th>
+                <th className="px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    ref={(input) => {
+                      if (input) input.indeterminate = someVisibleSelected;
+                    }}
+                    onChange={(event) => toggleVisibleAssets(event.target.checked)}
+                  />
+                </th>
                 {assetRegisterColumns.map(([, label]) => <th key={label} className="px-3 py-3">{label}</th>)}
                 {isAdmin && <th className="px-3 py-3">Actions</th>}
               </tr>
@@ -1326,7 +1434,14 @@ function Assets({
             <tbody>
               {visibleAssets.map((asset) => (
                 <tr key={asset.id} onClick={() => { setSelectedAssetId(asset.id); setPreviewAsset(asset); }} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50">
-                  <td className="px-3 py-3"><input type="checkbox" onClick={(event) => event.stopPropagation()} /></td>
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedAssetIds.has(asset.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => toggleAssetSelection(asset.id, event.target.checked)}
+                    />
+                  </td>
                   {assetRegisterColumns.map(([key, label]) => (
                     <td key={`${asset.id}-${key}`} className={`px-3 py-3 ${label === "LOCATION" ? "font-black text-lagoon" : ""}`}>
                       {label === "EQUIPMENTVALUE" ? <CurrencyAmount value={asset[key]} /> : displayValue(asset[key])}
@@ -1334,7 +1449,22 @@ function Assets({
                   ))}
                   {isAdmin && (
                     <td className="px-3 py-3">
-                      <button type="button" disabled={saving} onClick={(event) => { event.stopPropagation(); deleteAsset(asset.id); }} className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400">Delete</button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedAssetIds((current) => {
+                            const next = new Set(current);
+                            next.delete(asset.id);
+                            return next;
+                          });
+                          deleteAsset(asset.id);
+                        }}
+                        className="rounded-lg bg-coral px-3 py-2 text-xs font-black text-white disabled:bg-slate-400"
+                      >
+                        Delete
+                      </button>
                     </td>
                   )}
                 </tr>

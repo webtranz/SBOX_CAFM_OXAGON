@@ -4,6 +4,70 @@ import { requireUser } from "@/lib/api-auth";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const columnFilterFields: Record<string, string[]> = {
+  equipmentNo: ["tag"],
+  equipmentDesc: ["assetDescription", "name"],
+  assetStatusText: ["assetStatusText", "status"],
+  eqType: ["eqType"],
+  organization: ["organization"],
+  departmentCode: ["departmentCode"],
+  departmentDesc: ["departmentDesc"],
+  classCode: ["classCode"],
+  classDesc: ["classDesc"],
+  category: ["category", "assetGroup"],
+  categoryDesc: ["categoryDesc"],
+  serialNumber: ["serialNumber"],
+  model: ["model"],
+  manufacturer: ["manufacturer"],
+  gsrc: ["gsrc"],
+  attribute: ["attribute"],
+  environment: ["environment"],
+  pressureBar: ["pressureBar"],
+  flowLps: ["flowLps"],
+  supplyVoltageVolt: ["supplyVoltageVolt"],
+  serviceLife: ["serviceLife"],
+  locationCode: ["locationCode", "room"],
+  locationDesc: ["locationDesc"],
+  position: ["position"],
+  classOrganization: ["classOrganization"],
+  primarySystem: ["primarySystem", "system"],
+  additionalNote: ["additionalNote", "remarks"],
+};
+
+function dateFilter(field: string, value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const start = new Date(parsed);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { [field]: { gte: start, lt: end } };
+}
+
+function numberFilter(field: string, value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return { [field]: parsed };
+}
+
+function booleanFilter(field: string, value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (["yes", "true", "1", "y"].includes(normalized)) return { [field]: true };
+  if (["no", "false", "0", "n"].includes(normalized)) return { [field]: false };
+  return null;
+}
+
+function columnFilter(field: string, value: string) {
+  if (!value.trim()) return null;
+  if (field === "commissionDate") return dateFilter("installDate", value);
+  if (field === "endOfUsefulLife") return dateFilter("replacementDate", value);
+  if (field === "equipmentValue") return numberFilter("purchaseCost", value);
+  if (field === "outOfServiceDisplay") return booleanFilter("outOfService", value);
+  const fields = columnFilterFields[field];
+  if (!fields?.length) return null;
+  return { OR: fields.map((item) => ({ [item]: { contains: value, mode: "insensitive" } })) };
+}
+
 export async function GET(request: Request) {
   const { error } = await requireUser();
   if (error) return error;
@@ -72,9 +136,16 @@ export async function GET(request: Request) {
       ],
     });
   }
-  if (filterField && filterValue && searchableFields.has(filterField)) {
-    andFilters.push({ [filterField]: { contains: filterValue, mode: "insensitive" } });
+  if (filterField && filterValue) {
+    const mappedFilter = columnFilter(filterField, filterValue);
+    if (mappedFilter) andFilters.push(mappedFilter);
+    else if (searchableFields.has(filterField)) andFilters.push({ [filterField]: { contains: filterValue, mode: "insensitive" } });
   }
+  url.searchParams.forEach((value, key) => {
+    if (!key.startsWith("column_")) return;
+    const filter = columnFilter(key.replace("column_", ""), value);
+    if (filter) andFilters.push(filter);
+  });
   if (classValue) {
     andFilters.push({ OR: [{ classCode: classValue }, { category: classValue }, { assetGroup: classValue }] });
   }
