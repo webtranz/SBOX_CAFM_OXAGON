@@ -95,8 +95,26 @@ async function importRow(module: string, row: Row) {
 
 async function firstSite() {
   const site = await prisma.site.findFirst({ include: { buildings: { take: 1 } } });
-  if (!site) throw new Error("No site found. Seed or create a site first.");
-  return site;
+  if (site) return site;
+
+  return prisma.site.create({
+    data: {
+      name: "Fadhili Bachelor Camp",
+      city: "Fadhili",
+      country: "Saudi Arabia",
+      type: "Accommodation Camp",
+      areaSqm: 0,
+      buildings: {
+        create: {
+          name: "Fadhili Bachelor Camp",
+          code: "FBC",
+          floors: 1,
+          areaSqm: 0,
+        },
+      },
+    },
+    include: { buildings: { take: 1 } },
+  });
 }
 
 async function importAsset(row: Row) {
