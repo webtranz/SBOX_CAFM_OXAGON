@@ -265,6 +265,7 @@ const moduleGroups: ModuleGroup[] = [
 const healthColors = ["#35a852", "#0f8b8d", "#ffd166", "#f45d48"];
 const PAGE_SIZE = 100;
 const HOUSING_FIELD_CLASS = "h-11 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon";
+const RESOURCE_EMPLOYEE_FIELD_CLASS = "h-11 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon";
 const assetRegisterColumns: [string, string][] = [
   ["equipmentNo", "EQUIPMENTNO"],
   ["equipmentDesc", "EQUIPMENTDESC"],
@@ -6369,7 +6370,7 @@ function ResourceManagement({
   }
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+    <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
       <Panel title="Resource Management" icon={Users}>
         <ReportButtons type="employees" label="Employees report" />
         <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
@@ -6397,56 +6398,56 @@ function ResourceManagement({
           <ResourceTimeSheetsTable rows={timeSheetRows} navigate={navigate} />
         )}
       </Panel>
-      <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <form onSubmit={handleSubmit} className="min-w-0 rounded-lg border border-white/80 bg-white p-5 shadow-lift">
         <h3 className="text-xl font-black">Add Employee</h3>
-        <div className="mt-4 grid gap-3">
-          <input name="name" placeholder="Name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="email" type="email" placeholder="Email" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="companyId" placeholder="Company ID" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="nationalityType" placeholder="Nationality type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <div className="mt-4 grid min-w-0 gap-3">
+          <input name="name" placeholder="Name" className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
+          <input name="email" type="email" placeholder="Email" className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
+          <input name="companyId" placeholder="Company ID" className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
+          <input name="nationalityType" placeholder="Nationality type" className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
+          <select name="departmentCode" className={RESOURCE_EMPLOYEE_FIELD_CLASS}>
             <option value="">Select department</option>
             {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
           </select>
-          <input name="siteLocation" placeholder="Site location" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+          <input name="siteLocation" placeholder="Site location" className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
           <RequiredLabel label="Shift Eligibility">
-            <select name="shiftEligibility" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <select name="shiftEligibility" required className={RESOURCE_EMPLOYEE_FIELD_CLASS}>
               {SHIFT_ELIGIBILITY_OPTIONS.map((option) => <option key={option}>{option}</option>)}
             </select>
           </RequiredLabel>
           <RequiredLabel label="Default Shift">
-            <select name="defaultShift" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <select name="defaultShift" required className={RESOURCE_EMPLOYEE_FIELD_CLASS}>
               <option value="">Select default shift</option>
               <option>General</option>
               {shiftRotation.shifts.map((shift) => <option key={shift.id} value={shift.name}>{shift.name}</option>)}
             </select>
           </RequiredLabel>
           <RequiredLabel label="Service Team">
-            <select name="serviceTeamCode" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <select name="serviceTeamCode" required className={RESOURCE_EMPLOYEE_FIELD_CLASS}>
               <option value="">Select team</option>
               {teams.map((team) => <option key={team.id} value={team.code}>{team.code} - {team.name}</option>)}
             </select>
           </RequiredLabel>
           <RequiredLabel label="Supervisor">
-            <select name="supervisor" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <select name="supervisor" required className={RESOURCE_EMPLOYEE_FIELD_CLASS}>
               <option value="">Select supervisor</option>
               {[...users.map((item) => item.name || item.email), ...teams.map((team) => team.supervisor)].filter(Boolean).map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </RequiredLabel>
           <RequiredLabel label="Work Location / Zone">
-            <select name="workLocationZone" required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+            <select name="workLocationZone" required className={RESOURCE_EMPLOYEE_FIELD_CLASS}>
               <option value="">Select location / zone</option>
               {locations.map((location) => <option key={location.id} value={location.code}>{location.code} - {location.description || location.site}</option>)}
             </select>
           </RequiredLabel>
           <RequiredLabel label="Maximum working hours per day">
-            <input name="maxHoursPerDay" type="number" min="1" defaultValue={8} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+            <input name="maxHoursPerDay" type="number" min="1" defaultValue={8} required className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
           </RequiredLabel>
           <RequiredLabel label="Maximum consecutive working days">
-            <input name="maxConsecutiveDays" type="number" min="1" defaultValue={6} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+            <input name="maxConsecutiveDays" type="number" min="1" defaultValue={6} required className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
           </RequiredLabel>
           <RequiredLabel label="Minimum rest hours between shifts">
-            <input name="minRestHours" type="number" min="1" defaultValue={12} required className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
+            <input name="minRestHours" type="number" min="1" defaultValue={12} required className={RESOURCE_EMPLOYEE_FIELD_CLASS} />
           </RequiredLabel>
           <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Employee"}</button>
         </div>
@@ -6495,7 +6496,7 @@ function ResourceTimeSheetsTable({ rows, navigate }: { rows: any[]; navigate: (m
 
 function RequiredLabel({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="grid gap-1 text-sm font-bold text-slate-600">
+    <label className="grid min-w-0 gap-1 text-sm font-bold text-slate-600">
       <span>{label} <span className="text-coral">*</span></span>
       {children}
     </label>
