@@ -267,6 +267,8 @@ const PAGE_SIZE = 100;
 const HOUSING_FIELD_CLASS = "h-11 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon";
 const FACILITY_FIELD_CLASS = "h-11 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon";
 const RESOURCE_EMPLOYEE_FIELD_CLASS = "h-11 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon";
+const TICKET_PLAN_FIELD_CLASS = "h-11 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon";
+const TICKET_PLAN_TEXTAREA_CLASS = "w-full min-w-0 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon";
 const assetRegisterColumns: [string, string][] = [
   ["equipmentNo", "EQUIPMENTNO"],
   ["equipmentDesc", "EQUIPMENTDESC"],
@@ -4169,7 +4171,7 @@ function Ppm({
   }, {});
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+    <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
       <Panel title="Preventive Maintenance Planner" icon={CalendarCheck}>
         <ReportButtons type="ppm" label="PPM report" />
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -4270,17 +4272,17 @@ function PpmCreateForm({ assets, onSubmit, saving }: { assets: any[]; onSubmit: 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+    <form onSubmit={handleSubmit} className="min-w-0 rounded-lg border border-white/80 bg-white p-5 shadow-lift">
       <div className="mb-4 flex items-center gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-lg bg-sun/50 text-amber-700">
           <CalendarCheck size={20} />
         </div>
         <h3 className="text-xl font-black">Create PPM</h3>
       </div>
-      <div className="grid gap-3">
-        <input name="code" placeholder="PPM code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <input name="name" placeholder="PPM title" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <select name="assetTag" value={selectedAssetTag} onChange={(event) => setSelectedAssetTag(event.target.value)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon">
+      <div className="grid min-w-0 gap-3">
+        <input name="code" placeholder="PPM code" className={TICKET_PLAN_FIELD_CLASS} />
+        <input name="name" placeholder="PPM title" className={TICKET_PLAN_FIELD_CLASS} />
+        <select name="assetTag" value={selectedAssetTag} onChange={(event) => setSelectedAssetTag(event.target.value)} className={TICKET_PLAN_FIELD_CLASS}>
           <option value="">Select asset from register</option>
           {assets.map((asset) => (
             <option key={asset.id ?? asset.tag} value={asset.tag}>
@@ -4295,7 +4297,7 @@ function PpmCreateForm({ assets, onSubmit, saving }: { assets: any[]; onSubmit: 
             <span>Team: {selectedAsset.assignedTeamCode || "-"}</span>
           </div>
         )}
-        <select name="frequency" className="h-11 rounded-lg border border-slate-200 bg-white px-3 outline-none focus:border-lagoon">
+        <select name="frequency" className={TICKET_PLAN_FIELD_CLASS}>
           <option value="">Select frequency</option>
           <option>Daily</option>
           <option>Weekly</option>
@@ -4304,8 +4306,8 @@ function PpmCreateForm({ assets, onSubmit, saving }: { assets: any[]; onSubmit: 
           <option>Semi Annual</option>
           <option>Annual</option>
         </select>
-        <input name="durationHrs" type="number" min={0} step="0.5" placeholder="Duration hours" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-        <textarea name="checklist" placeholder="Checklist / preventive maintenance procedure" className="min-h-28 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+        <input name="durationHrs" type="number" min={0} step="0.5" placeholder="Duration hours" className={TICKET_PLAN_FIELD_CLASS} />
+        <textarea name="checklist" placeholder="Checklist / preventive maintenance procedure" className={`${TICKET_PLAN_TEXTAREA_CLASS} min-h-28`} />
         <button disabled={saving} className="mt-2 flex h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
           <Plus size={18} />
           {saving ? "Saving..." : "Submit"}
@@ -5872,26 +5874,26 @@ function JobPlans({ jobPlans, services, departments, submitJobPlan, deleteJobPla
         <ReportButtons type="job-plans" label="Job plans report" />
         <DataTable rows={jobPlans} columns={[["code", "Code"], ["name", "Name"], ["assetType", "Asset Type"], ["departmentCode", "Dept"], ["serviceCode", "Service"], ["estimatedHours", "Hours"], ["priority", "Priority"], ["active", "Active"]]} actions={isAdmin ? (row) => <DeleteRowButton saving={saving} onDelete={() => deleteJobPlan(row.id)} /> : undefined} />
       </Panel>
-      <form onSubmit={handleSubmit} className="rounded-lg border border-white/80 bg-white p-5 shadow-lift">
+      <form onSubmit={handleSubmit} className="min-w-0 rounded-lg border border-white/80 bg-white p-5 shadow-lift">
         <h3 className="text-xl font-black">Add Job Plan</h3>
-        <div className="mt-4 grid gap-3">
-          <input name="code" placeholder="Job plan code" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="name" placeholder="Job plan name" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <input name="assetType" placeholder="Specific asset type" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <select name="departmentCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+        <div className="mt-4 grid min-w-0 gap-3">
+          <input name="code" placeholder="Job plan code" className={TICKET_PLAN_FIELD_CLASS} />
+          <input name="name" placeholder="Job plan name" className={TICKET_PLAN_FIELD_CLASS} />
+          <input name="assetType" placeholder="Specific asset type" className={TICKET_PLAN_FIELD_CLASS} />
+          <select name="departmentCode" className={TICKET_PLAN_FIELD_CLASS}>
             <option value="">Select department</option>
             {departments.map((department) => <option key={department.id} value={department.code}>{department.code} - {department.name}</option>)}
           </select>
-          <select name="serviceCode" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <select name="serviceCode" className={TICKET_PLAN_FIELD_CLASS}>
             <option value="">Select service</option>
             {services.map((service) => <option key={service.id} value={service.code}>{service.code} - {service.name}</option>)}
           </select>
-          <input name="estimatedHours" type="number" placeholder="Estimated hours" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon" />
-          <select name="priority" defaultValue="MEDIUM" className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-lagoon">
+          <input name="estimatedHours" type="number" placeholder="Estimated hours" className={TICKET_PLAN_FIELD_CLASS} />
+          <select name="priority" defaultValue="MEDIUM" className={TICKET_PLAN_FIELD_CLASS}>
             <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option>
           </select>
-          <textarea name="steps" placeholder="Job plan steps" className="min-h-24 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
-          <textarea name="safetyNotes" placeholder="Safety notes" className="min-h-20 rounded-lg border border-slate-200 p-3 outline-none focus:border-lagoon" />
+          <textarea name="steps" placeholder="Job plan steps" className={`${TICKET_PLAN_TEXTAREA_CLASS} min-h-24`} />
+          <textarea name="safetyNotes" placeholder="Safety notes" className={`${TICKET_PLAN_TEXTAREA_CLASS} min-h-20`} />
           <button disabled={saving} className="h-11 rounded-lg bg-ink font-black text-white disabled:bg-slate-400">{saving ? "Saving..." : "Save Job Plan"}</button>
         </div>
       </form>
