@@ -1947,6 +1947,7 @@ function WorkOrders({
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [departmentFilter, setDepartmentFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
   const [assignedFilter, setAssignedFilter] = useState("All");
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -1957,7 +1958,8 @@ function WorkOrders({
   const canExecute = permissions.executeWork;
   const canFinalReview = permissions.verifyWork && !isTechnician;
   const statuses = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.status).filter(Boolean)))];
-  const categories = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.departmentCode || work.assetType).filter(Boolean)))];
+  const categories = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.assetType).filter(Boolean)))];
+  const departments = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.departmentCode).filter(Boolean)))];
   const types = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.type).filter(Boolean)))];
   const teams = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.assignedTeamCode).filter(Boolean)))];
   const filteredWorks = useMemo(() => {
@@ -1967,14 +1969,15 @@ function WorkOrders({
       const queryMatch = !search || haystack.includes(search.toLowerCase());
       const statusMatch = statusFilter === "All" || work.status === statusFilter;
       const priorityMatch = priorityFilter === "All" || work.priority === priorityFilter;
-      const categoryMatch = categoryFilter === "All" || work.departmentCode === categoryFilter || work.assetType === categoryFilter;
+      const categoryMatch = categoryFilter === "All" || work.assetType === categoryFilter;
+      const departmentMatch = departmentFilter === "All" || work.departmentCode === departmentFilter;
       const typeMatch = typeFilter === "All" || work.type === typeFilter;
       const assignedMatch = assignedFilter === "All" || work.assignedTeamCode === assignedFilter || (assignedFilter === "Not Assigned" && !work.assignedTeamCode);
       const dueTime = work.dueAt ? new Date(work.dueAt).getTime() : null;
       const overdueMatch = !overdueOnly || (dueTime !== null && dueTime <= Date.now() + 24 * 60 * 60 * 1000 && work.status !== "CLOSED");
-      return queryMatch && statusMatch && priorityMatch && categoryMatch && typeMatch && assignedMatch && overdueMatch;
+      return queryMatch && statusMatch && priorityMatch && categoryMatch && departmentMatch && typeMatch && assignedMatch && overdueMatch;
     });
-  }, [data.workOrders, search, statusFilter, priorityFilter, categoryFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed]);
+  }, [data.workOrders, search, statusFilter, priorityFilter, categoryFilter, departmentFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed]);
   const selectedWork = filteredWorks.find((work) => work.id === selectedWorkId) ?? filteredWorks[0] ?? data.workOrders[0];
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(filteredWorks.length / PAGE_SIZE));
@@ -1990,7 +1993,7 @@ function WorkOrders({
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, priorityFilter, categoryFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed, filteredWorks.length]);
+  }, [search, statusFilter, priorityFilter, categoryFilter, departmentFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed, filteredWorks.length]);
 
   async function runWorkAction(key: string, work: any, action: () => Promise<void> | void) {
     setSelectedWorkId(work.id);
@@ -2052,6 +2055,9 @@ function WorkOrders({
           <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3">
             {categories.map((category) => <option key={category} value={category}>{category === "All" ? "Category" : category}</option>)}
           </select>
+          <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3">
+            {departments.map((department) => <option key={department} value={department}>{department === "All" ? "DPT" : department}</option>)}
+          </select>
           <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3">
             {types.map((type) => <option key={type} value={type}>{type === "All" ? "Work Type" : type}</option>)}
           </select>
@@ -2064,7 +2070,7 @@ function WorkOrders({
           <button type="button" onClick={() => setOverdueOnly((current) => !current)} className={`h-10 rounded-lg px-3 ${overdueOnly ? "bg-coral text-white" : "border border-slate-200 bg-white text-lagoon"}`}>Overdue & Due Today</button>
           <label className="flex items-center gap-2"><input type="checkbox" checked={showTimeMetrics} onChange={(event) => setShowTimeMetrics(event.target.checked)} /> Show Time Metrics</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={showOnlyDelayed} onChange={(event) => setShowOnlyDelayed(event.target.checked)} /> Show Only Delayed</label>
-          <button type="button" onClick={() => { setSearch(""); setStatusFilter("All"); setPriorityFilter("All"); setCategoryFilter("All"); setTypeFilter("All"); setAssignedFilter("All"); setOverdueOnly(false); }} className="ml-auto h-10 rounded-lg bg-white px-3 text-lagoon">Clear all</button>
+          <button type="button" onClick={() => { setSearch(""); setStatusFilter("All"); setPriorityFilter("All"); setCategoryFilter("All"); setDepartmentFilter("All"); setTypeFilter("All"); setAssignedFilter("All"); setOverdueOnly(false); }} className="ml-auto h-10 rounded-lg bg-white px-3 text-lagoon">Clear all</button>
         </div>
         {view === "list" ? (
           <>
@@ -2077,6 +2083,7 @@ function WorkOrders({
                     <th className="px-3 py-3 font-black">Status</th>
                     <th className="px-3 py-3 font-black">Priority</th>
                     <th className="px-3 py-3 font-black">Category</th>
+                    <th className="px-3 py-3 font-black">DPT</th>
                     <th className="px-3 py-3 font-black">Due Date</th>
                     <th className="px-3 py-3 font-black">Asset</th>
                     <th className="px-3 py-3 font-black">Location</th>
@@ -2097,7 +2104,8 @@ function WorkOrders({
                       <td className="max-w-[280px] px-3 py-3"><div className="font-black">{work.title}</div><div className="mt-1 text-xs font-bold text-slate-500">{work.woNo}</div></td>
                       <td className="whitespace-nowrap px-3 py-3"><WorkOrderStatusBadge status={work.status} /></td>
                       <td className="whitespace-nowrap px-3 py-3"><RequestPriorityBadge priority={work.priority} /></td>
-                      <td className="whitespace-nowrap px-3 py-3">{work.departmentCode || work.assetType || "-"}</td>
+                      <td className="whitespace-nowrap px-3 py-3">{work.assetType || "-"}</td>
+                      <td className="whitespace-nowrap px-3 py-3">{work.departmentCode || "-"}</td>
                       <td className="whitespace-nowrap px-3 py-3">{formatDateCell(work.dueAt)}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-lagoon">{work.asset?.tag ?? work.assetTag ?? "-"}</td>
                       <td className="max-w-[260px] px-3 py-3 text-slate-600">{work.asset?.buildingCode || work.asset?.floor || work.location || "-"}</td>
@@ -5964,7 +5972,7 @@ function Templates() {
     ["services", "Services", "departmentName,departmentCode"],
     ["inventory", "Inventory", "sku,name,category,unit,onHand,reorderPoint,unitCost,vendor,location"],
     ["requests", "Requests", "ticketNo,title,category,departmentCode,serviceCode,assignedTeamCode,requester,channel,priority,status,location,attachmentUrls,rejectionReason,slaHours,description"],
-    ["workOrders", "Work Orders", "woNo,title,type,assetType,departmentCode,serviceCode,assignedTeamCode,jobPlanCode,priority,status,assetTag,dueHours,estimatedHours,cost,jobPlan,safetyNotes,workNotes,materialRequest,photoUrls,assetsUsed,inventoryUsed,supervisorDecision"],
+    ["workOrders", "Work Orders", "woNo,title,type,assetType,departmentCode,serviceCode,assignedTeamCode,jobPlanCode,priority,status,assetTag,plannedStart,dueAt,finishedAt,resolutionAt,dateTimeCreated,estimatedHours,actualHours,cost,jobPlan,safetyNotes,workNotes,materialRequest,photoUrls,assetsUsed,inventoryUsed,supervisorDecision,sourceYear,sourceWorkOrder,sourceServiceRequest,sourceEquipmentLocation,sourceLocation,matchSource"],
     ["jobPlans", "Job Plans", "code,name,assetType,departmentCode,serviceCode,estimatedHours,priority,steps,safetyNotes"],
     ["locations", "Locations", "Location,Description,Class,Parent Location,Out of Service,Residential"],
     ["inspections", "Inspections", "code,title,area,inspector,risk,score,status,dueAt,findings"],

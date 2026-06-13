@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { addDays, addHours, addYears } from "date-fns";
 import { apiError } from "@/lib/api-response";
-import { requirePermission } from "@/lib/api-auth";
+import { requireAnyPermission } from "@/lib/api-auth";
 import { auditAction } from "@/lib/audit";
 import { csvResponse, parseCsv } from "@/lib/csv";
 import { prisma } from "@/lib/prisma";
@@ -17,10 +17,10 @@ type ImportResult = {
 
 export async function POST(request: Request) {
   try {
-    const { error, user } = await requirePermission("assets.manage");
-    if (error) return error;
     const formData = await request.formData();
     const module = String(formData.get("module") || "");
+    const { error, user } = await requireAnyPermission(bulkUploadPermissions(module));
+    if (error) return error;
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
@@ -75,6 +75,13 @@ export async function POST(request: Request) {
   } catch (error) {
     return apiError(error, "Bulk upload failed");
   }
+}
+
+function bulkUploadPermissions(module: string) {
+  if (module === "workOrders") return ["work.manage", "assets.manage"];
+  if (module === "requests") return ["requests.manage"];
+  if (["teams", "services", "departments", "employees"].includes(module)) return ["users.manage", "requests.manage"];
+  return ["assets.manage"];
 }
 
 async function importRow(module: string, row: Row) {
@@ -352,33 +359,61 @@ async function importRequest(row: Row) {
 async function importWorkOrder(row: Row) {
   const count = await prisma.workOrder.count();
   const asset = row.assetTag ? await prisma.asset.findUnique({ where: { tag: row.assetTag } }) : null;
-  const workOrder = await prisma.workOrder.create({
-    data: {
-      woNo: row.woNo || `WO-${String(count + 81001).padStart(5, "0")}`,
-      title: required(row, "title"),
-      type: row.type || "Corrective",
-      assetType: row.assetType || asset?.assetGroup || asset?.category || "",
-      departmentCode: row.departmentCode || "",
-      serviceCode: row.serviceCode || "",
-      assignedTeamCode: row.assignedTeamCode || "",
-      jobPlanCode: row.jobPlanCode || "",
-      priority: priority(row.priority),
-      status: workStatus(row.status, "ASSIGNED"),
-      assetId: asset?.id,
-      plannedStart: new Date(),
-      dueAt: addHours(new Date(), integer(row.dueHours, 24)),
-      estimatedHours: number(row.estimatedHours, 2),
-      cost: number(row.cost, 0),
-      jobPlan: row.jobPlan || "Review, execute, document and close.",
-      safetyNotes: row.safetyNotes || "Verify PPE and permits before work starts.",
-      workNotes: row.workNotes || "",
-      materialRequest: row.materialRequest || "",
-      photoUrls: row.photoUrls || "",
-      assetsUsed: row.assetsUsed || "",
-      inventoryUsed: row.inventoryUsed || "",
-      supervisorDecision: row.supervisorDecision || "",
+  const woNo = row.woNo || `WO-${String(count + 81001).padStart(5, "0")}`;
+  const plannedStart = date(value(row, "plannedStart", "schedStartDate", "Sched. Start Date"), new Date());
+  const finishedAt = optionalDate(value(row, "finishedAt", "dateCompleted", "Date Completed"));
+  const resolutionAt = optionalDate(value(row, "resolutionAt", "dateCompleted", "Date Completed")) || finishedAt;
+  const dueAt = date(value(row, "dueAt", "dateCompleted", "Date Completed"), addHours(plannedStart, integer(row.dueHours, 24)));
+  const importedCreatedAt = optionalDate(value(row, "dateTimeCreated", "createdAt", "Date/Time Created"));
+  const actualHours = numberOrNull(value(row, "actualHours"));
+  const payload = {
+    title: required(row, "title"),
+    type: row.type || "Corrective Maintenance",
+    assetType: row.assetType || asset?.assetGroup || asset?.category || "",
+    departmentCode: row.departmentCode || "",
+    serviceCode: row.serviceCode || "",
+    assignedTeamCode: row.assignedTeamCode || "",
+    jobPlanCode: row.jobPlanCode || "",
+    priority: priority(row.priority),
+    status: workStatus(row.status, "ASSIGNED"),
+    assetId: asset?.id,
+    plannedStart,
+    dueAt,
+    responseAt: importedCreatedAt,
+    resolutionAt,
+    finishedAt,
+    estimatedHours: number(row.estimatedHours, actualHours ?? 2),
+    actualHours,
+    cost: number(row.cost, 0),
+    jobPlan: row.jobPlan || "Review, execute, document and close.",
+    safetyNotes: row.safetyNotes || "Verify PPE and permits before work starts.",
+    workNotes: row.workNotes || "",
+    materialRequest: row.materialRequest || "",
+    photoUrls: row.photoUrls || "",
+    assetsUsed: row.assetsUsed || row.assetTag || "",
+    inventoryUsed: row.inventoryUsed || "",
+    supervisorDecision: row.supervisorDecision || "",
+  };
+  const workOrder = await prisma.workOrder.upsert({
+    where: { woNo },
+    update: payload,
+    create: {
+      woNo,
+      ...payload,
+      createdAt: importedCreatedAt || undefined,
     },
   });
+  if (asset?.id) {
+    await prisma.assetHistory.create({
+      data: {
+        assetId: asset.id,
+        eventType: "WORK_ORDER_IMPORT",
+        title: `${workOrder.woNo} imported`,
+        details: `${workOrder.title} / ${workOrder.status} / ${workOrder.departmentCode || "No department"}.`,
+        actor: "Bulk Upload",
+      },
+    });
+  }
   return importResult("work_order", "CREATE", workOrder, workOrder.woNo, workOrder.title);
 }
 
@@ -594,6 +629,11 @@ function number(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function numberOrNull(value: string | undefined) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function integer(value: string | undefined, fallback: number) {
   return Math.round(number(value, fallback));
 }
@@ -611,8 +651,17 @@ function date(value: string | undefined, fallback: Date) {
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
 
+function optionalDate(value: string | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function priority(value: string | undefined) {
-  const normalized = String(value || "MEDIUM").toUpperCase();
+  const normalized = String(value || "MEDIUM").trim().toUpperCase();
+  if (["URGENT", "EMERGENCY", "CRITICAL", "P1"].includes(normalized)) return "CRITICAL";
+  if (["IMPORTANT", "HIGH", "P2"].includes(normalized)) return "HIGH";
+  if (["LOW", "P4"].includes(normalized)) return "LOW";
   return ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(normalized) ? normalized as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" : "MEDIUM";
 }
 
@@ -629,9 +678,15 @@ function assetStatusFromImport(value: string | undefined) {
 }
 
 function workStatus(value: string | undefined, fallback: "NEW" | "ASSIGNED") {
-  const normalized = String(value || fallback).toUpperCase();
-  return ["NEW", "TRIAGED", "ASSIGNED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "PENDING_SUPERVISOR_REVIEW", "REOPENED", "CLOSED"].includes(normalized)
-    ? normalized as "NEW" | "TRIAGED" | "ASSIGNED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "PENDING_SUPERVISOR_REVIEW" | "REOPENED" | "CLOSED"
+  const normalized = String(value || fallback).trim().toUpperCase().replace(/[-_]+/g, " ");
+  if (["CLOSE CM", "CLOSED CM", "CLOSE", "CLOSED", "COMPLETED", "COMPLETE"].includes(normalized)) return "CLOSED";
+  if (normalized.includes("PROGRESS")) return "IN_PROGRESS";
+  if (normalized.includes("HOLD")) return "ON_HOLD";
+  if (normalized.includes("REOPEN")) return "REOPENED";
+  if (normalized.includes("ASSIGN")) return "ASSIGNED";
+  const enumValue = normalized.replace(/\s+/g, "_");
+  return ["OPEN", "NEW", "TRIAGED", "APPROVED", "REJECTED", "PENDING_ASSIGNMENT", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "PENDING_SUPERVISOR_REVIEW", "VERIFIED", "REOPENED", "CLOSED"].includes(enumValue)
+    ? enumValue as "OPEN" | "NEW" | "TRIAGED" | "APPROVED" | "REJECTED" | "PENDING_ASSIGNMENT" | "ASSIGNED" | "ACCEPTED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "PENDING_SUPERVISOR_REVIEW" | "VERIFIED" | "REOPENED" | "CLOSED"
     : fallback;
 }
 
