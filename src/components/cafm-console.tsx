@@ -55,6 +55,7 @@ type ConsoleData = {
   assets: any[];
   requests: any[];
   workOrders: any[];
+  workOrdersTotal?: number;
   inventory: any[];
   inspections: any[];
   alerts: any[];
@@ -1952,52 +1953,85 @@ function WorkOrders({
   const [assignedFilter, setAssignedFilter] = useState("All");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [monthDate, setMonthDate] = useState(() => new Date());
+  const [page, setPage] = useState(1);
+  const [workRowsSource, setWorkRowsSource] = useState<any[]>(data.workOrders);
+  const [workTotal, setWorkTotal] = useState(data.workOrdersTotal ?? data.workOrders.length);
+  const [workLoading, setWorkLoading] = useState(false);
+  const workScrollRef = useRef<HTMLDivElement | null>(null);
   const isTechnician = roleKindLabel(role) === "technician";
   const isAdmin = roleKindLabel(role) === "admin";
   const canAssignOrEdit = permissions.manageWork && !isTechnician;
   const canExecute = permissions.executeWork;
   const canFinalReview = permissions.verifyWork && !isTechnician;
-  const statuses = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.status).filter(Boolean)))];
-  const categories = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.assetType).filter(Boolean)))];
-  const departments = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.departmentCode).filter(Boolean)))];
-  const types = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.type).filter(Boolean)))];
-  const teams = ["All", ...Array.from(new Set(data.workOrders.map((work) => work.assignedTeamCode).filter(Boolean)))];
-  const filteredWorks = useMemo(() => {
-    const sourceRows = showTimeMetrics ? workMetricRows(data.workOrders, showOnlyDelayed) : data.workOrders;
-    return sourceRows.filter((work) => {
-      const haystack = `${work.woNo} ${work.title} ${work.type} ${work.assetType} ${work.departmentCode} ${work.serviceCode} ${work.assignedTeamCode} ${work.location} ${work.jobPlan}`.toLowerCase();
-      const queryMatch = !search || haystack.includes(search.toLowerCase());
-      const statusMatch = statusFilter === "All" || work.status === statusFilter;
-      const priorityMatch = priorityFilter === "All" || work.priority === priorityFilter;
-      const categoryMatch = categoryFilter === "All" || work.assetType === categoryFilter;
-      const departmentMatch = departmentFilter === "All" || work.departmentCode === departmentFilter;
-      const typeMatch = typeFilter === "All" || work.type === typeFilter;
-      const assignedMatch = assignedFilter === "All" || work.assignedTeamCode === assignedFilter || (assignedFilter === "Not Assigned" && !work.assignedTeamCode);
-      const dueTime = work.dueAt ? new Date(work.dueAt).getTime() : null;
-      const overdueMatch = !overdueOnly || (dueTime !== null && dueTime <= Date.now() + 24 * 60 * 60 * 1000 && work.status !== "CLOSED");
-      return queryMatch && statusMatch && priorityMatch && categoryMatch && departmentMatch && typeMatch && assignedMatch && overdueMatch;
-    });
-  }, [data.workOrders, search, statusFilter, priorityFilter, categoryFilter, departmentFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed]);
-  const selectedWork = filteredWorks.find((work) => work.id === selectedWorkId) ?? filteredWorks[0] ?? data.workOrders[0];
-  const [visibleWorkCount, setVisibleWorkCount] = useState(PAGE_SIZE);
-  const visibleWorks = filteredWorks.slice(0, visibleWorkCount);
-  const hasMoreWorks = visibleWorkCount < filteredWorks.length;
+  const statuses = ["All", ...Array.from(new Set(workRowsSource.map((work) => work.status).filter(Boolean)))];
+  const categories = ["All", ...Array.from(new Set(workRowsSource.map((work) => work.assetType).filter(Boolean)))];
+  const departments = ["All", ...Array.from(new Set(workRowsSource.map((work) => work.departmentCode).filter(Boolean)))];
+  const types = ["All", ...Array.from(new Set(workRowsSource.map((work) => work.type).filter(Boolean)))];
+  const teams = ["All", ...Array.from(new Set(workRowsSource.map((work) => work.assignedTeamCode).filter(Boolean)))];
+  const visibleWorks = useMemo(() => showTimeMetrics ? workMetricRows(workRowsSource, showOnlyDelayed) : workRowsSource, [workRowsSource, showTimeMetrics, showOnlyDelayed]);
+  const selectedWork = visibleWorks.find((work) => work.id === selectedWorkId) ?? visibleWorks[0] ?? workRowsSource[0] ?? data.workOrders[0];
+  const hasMoreWorks = workRowsSource.length < workTotal;
 
   useEffect(() => {
-    if (filteredWorks.length && !filteredWorks.some((work) => work.id === selectedWorkId)) {
-      setSelectedWorkId(filteredWorks[0].id);
+    if (visibleWorks.length && !visibleWorks.some((work) => work.id === selectedWorkId)) {
+      setSelectedWorkId(visibleWorks[0].id);
     }
-  }, [filteredWorks, selectedWorkId]);
+  }, [visibleWorks, selectedWorkId]);
 
   useEffect(() => {
-    setVisibleWorkCount(PAGE_SIZE);
-  }, [search, statusFilter, priorityFilter, categoryFilter, departmentFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed, filteredWorks.length]);
+    setPage(1);
+    workScrollRef.current?.scrollTo({ top: 0 });
+  }, [search, statusFilter, priorityFilter, categoryFilter, departmentFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed]);
+
+  useEffect(() => {
+    setWorkRowsSource(data.workOrders);
+    setWorkTotal((current) => Math.max(current, data.workOrdersTotal ?? data.workOrders.length));
+  }, [data.workOrders, data.workOrdersTotal]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setWorkLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          pageSize: String(PAGE_SIZE),
+          query: search,
+          status: statusFilter,
+          priority: priorityFilter,
+          category: categoryFilter,
+          department: departmentFilter,
+          type: typeFilter,
+          assigned: assignedFilter,
+          overdueOnly: overdueOnly ? "true" : "false",
+          delayedOnly: showTimeMetrics && showOnlyDelayed ? "true" : "false",
+        });
+        const response = await fetch(`/api/work-orders?${params.toString()}`, { cache: "no-store", signal: controller.signal });
+        if (response.ok) {
+          const result = await response.json();
+          setWorkRowsSource((current) => page === 1 ? result.workOrders ?? [] : [...current, ...(result.workOrders ?? [])]);
+          setWorkTotal(Number(result.total ?? result.workOrders?.length ?? 0));
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          console.error(error);
+        }
+      } finally {
+        if (!controller.signal.aborted) setWorkLoading(false);
+      }
+    }, 250);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [page, search, statusFilter, priorityFilter, categoryFilter, departmentFilter, typeFilter, assignedFilter, overdueOnly, showTimeMetrics, showOnlyDelayed]);
 
   function handleWorkScroll(event: UIEvent<HTMLDivElement>) {
     const element = event.currentTarget;
     const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 240;
-    if (nearBottom && hasMoreWorks) {
-      setVisibleWorkCount((current) => Math.min(current + PAGE_SIZE, filteredWorks.length));
+    if (nearBottom && hasMoreWorks && !workLoading) {
+      setWorkLoading(true);
+      setPage((current) => current + 1);
     }
   }
 
@@ -2080,7 +2114,11 @@ function WorkOrders({
         </div>
         {view === "list" ? (
           <>
-            <div onScroll={handleWorkScroll} className="cafm-scroll-x max-h-[70vh] overflow-auto rounded-lg border border-slate-200 scrollbar-thin">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm font-black text-slate-600">
+              <span>Showing {visibleWorks.length.toLocaleString()} of {workTotal.toLocaleString()} work orders</span>
+              {workLoading && <span className="text-lagoon">Loading work orders...</span>}
+            </div>
+            <div ref={workScrollRef} onScroll={handleWorkScroll} className="cafm-scroll-x max-h-[70vh] overflow-auto rounded-lg border border-slate-200 scrollbar-thin">
               <table className="cafm-data-table min-w-[1840px] border-collapse bg-white text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                   <tr>
@@ -2148,13 +2186,12 @@ function WorkOrders({
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-center text-sm font-black text-slate-500">
-              Showing {visibleWorks.length.toLocaleString()} of {filteredWorks.length.toLocaleString()} work orders
-              {hasMoreWorks ? " / scroll down to load more" : " / all matching work orders loaded"}
+            <div className="mt-3 text-center text-sm font-black text-slate-500">
+              {hasMoreWorks ? "Scroll down to load more work orders" : "All matching work orders loaded"}
             </div>
           </>
         ) : (
-          <WorkOrderCalendar works={filteredWorks} monthDate={monthDate} setMonthDate={setMonthDate} setSelectedWorkId={setSelectedWorkId} />
+          <WorkOrderCalendar works={visibleWorks} monthDate={monthDate} setMonthDate={setMonthDate} setSelectedWorkId={setSelectedWorkId} />
         )}
         {selectedWork && (
           <div className="mt-5">

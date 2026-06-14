@@ -3,6 +3,7 @@ import { z } from "zod";
 import { addHours } from "date-fns";
 import { accessRole } from "@/lib/access-control";
 import { auditAction } from "@/lib/audit";
+import { requireUser } from "@/lib/api-auth";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -34,6 +35,106 @@ const dueHours = {
   HIGH: 24,
   CRITICAL: 6,
 };
+
+function departmentValues(user: Awaited<ReturnType<typeof getCurrentUser>>) {
+  return [user?.department, user?.department?.trim()].filter(Boolean) as string[];
+}
+
+function visibleWorkWhere(user: Awaited<ReturnType<typeof getCurrentUser>>) {
+  const role = accessRole(user);
+  const departmentsForUser = departmentValues(user);
+  const teamCode = user?.team?.code;
+  if (role === "admin" || role === "readonly") return {};
+  if (role === "supervisor") return { departmentCode: { in: departmentsForUser } };
+  if (role === "technician") return { OR: [{ assignedToId: user?.id || "" }, { assignedTeamCode: teamCode || "" }] };
+  return { assignedToId: "__none__" };
+}
+
+export async function GET(request: Request) {
+  const { error } = await requireUser();
+  if (error) return error;
+  const url = new URL(request.url);
+  const query = url.searchParams.get("query")?.trim() || "";
+  const status = url.searchParams.get("status")?.trim() || "";
+  const priority = url.searchParams.get("priority")?.trim() || "";
+  const category = url.searchParams.get("category")?.trim() || "";
+  const department = url.searchParams.get("department")?.trim() || "";
+  const type = url.searchParams.get("type")?.trim() || "";
+  const assigned = url.searchParams.get("assigned")?.trim() || "";
+  const overdueOnly = url.searchParams.get("overdueOnly") === "true";
+  const delayedOnly = url.searchParams.get("delayedOnly") === "true";
+  const pageInput = Number(url.searchParams.get("page") || 1);
+  const pageSizeInput = Number(url.searchParams.get("pageSize") || 100);
+  const page = Number.isFinite(pageInput) ? Math.max(1, Math.floor(pageInput)) : 1;
+  const pageSize = Number.isFinite(pageSizeInput) ? Math.min(200, Math.max(25, Math.floor(pageSizeInput))) : 100;
+  const user = await getCurrentUser();
+  const where: any = {
+    ...visibleWorkWhere(user),
+    ...(status && status !== "All" ? { status } : {}),
+    ...(priority && priority !== "All" ? { priority } : {}),
+    ...(category && category !== "All" ? { assetType: category } : {}),
+    ...(department && department !== "All" ? { departmentCode: department } : {}),
+    ...(type && type !== "All" ? { type } : {}),
+  };
+  const andFilters: any[] = [];
+  if (assigned && assigned !== "All") {
+    andFilters.push(
+      assigned === "Not Assigned"
+        ? { OR: [{ assignedTeamCode: null }, { assignedTeamCode: "" }] }
+        : { assignedTeamCode: assigned },
+    );
+  }
+  if (overdueOnly) {
+    andFilters.push({
+      dueAt: { lte: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+      status: { not: "CLOSED" },
+    });
+  }
+  if (delayedOnly) {
+    andFilters.push({
+      OR: [
+        { responseAt: null },
+        { resolutionAt: null },
+        { finishedAt: null },
+        { status: { not: "CLOSED" } },
+      ],
+    });
+  }
+  if (query) {
+    andFilters.push({
+      OR: [
+        { woNo: { contains: query, mode: "insensitive" } },
+        { title: { contains: query, mode: "insensitive" } },
+        { type: { contains: query, mode: "insensitive" } },
+        { assetType: { contains: query, mode: "insensitive" } },
+        { departmentCode: { contains: query, mode: "insensitive" } },
+        { serviceCode: { contains: query, mode: "insensitive" } },
+        { assignedTeamCode: { contains: query, mode: "insensitive" } },
+        { jobPlan: { contains: query, mode: "insensitive" } },
+        { asset: { is: { tag: { contains: query, mode: "insensitive" } } } },
+        { asset: { is: { name: { contains: query, mode: "insensitive" } } } },
+        { request: { is: { ticketNo: { contains: query, mode: "insensitive" } } } },
+      ],
+    });
+  }
+  if (andFilters.length) where.AND = andFilters;
+  const [total, workOrders] = await Promise.all([
+    prisma.workOrder.count({ where }),
+    prisma.workOrder.findMany({
+      where,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      orderBy: { dueAt: "asc" },
+      include: {
+        assignedTo: { select: { name: true, email: true } },
+        asset: { select: { tag: true, name: true, assetDescription: true, buildingCode: true, floor: true, room: true } },
+        inventoryIssues: { include: { item: { select: { sku: true, name: true, unit: true } } }, orderBy: { issuedAt: "desc" } },
+        request: { select: { ticketNo: true, title: true, description: true, requester: true, attachmentUrls: true, location: true, category: true, createdAt: true } },
+      },
+    }),
+  ]);
+  return NextResponse.json({ workOrders, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+}
 
 export async function POST(request: Request) {
   try {
