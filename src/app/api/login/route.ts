@@ -4,20 +4,18 @@ import { z } from "zod";
 import { apiError } from "@/lib/api-response";
 import { auditAction } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { createSessionToken, sandboxAdmin, sandboxAdminPassword, sessionCookieName } from "@/lib/auth";
+import { createSessionToken, sandboxAdminPasswords, sandboxAdmins, sessionCookieName } from "@/lib/auth";
 
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 
-const builtInAdmins = [
-  {
-    name: sandboxAdmin.name,
-    email: sandboxAdmin.email,
-    password: sandboxAdminPassword,
-  },
-];
+const builtInAdmins = sandboxAdmins.map((admin) => ({
+  name: admin.name,
+  email: admin.email,
+  password: sandboxAdminPasswords[admin.email],
+}));
 
 async function ensureBuiltInAdmin(email: string, password: string) {
   const admin = builtInAdmins.find((item) => item.email === email && item.password === password);
@@ -48,7 +46,8 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     if (!process.env.DATABASE_URL) {
-      if (input.email !== sandboxAdmin.email || input.password !== sandboxAdminPassword) {
+      const sandboxAdmin = sandboxAdmins.find((admin) => admin.email === input.email && sandboxAdminPasswords[admin.email] === input.password);
+      if (!sandboxAdmin) {
         return apiError(new Error("Invalid login."), "Invalid login", 401);
       }
 

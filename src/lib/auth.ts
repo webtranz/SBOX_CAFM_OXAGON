@@ -11,7 +11,22 @@ export const sandboxAdmin = {
   department: "Administration",
   team: null,
 };
+export const sandboxAdmins = [
+  sandboxAdmin,
+  {
+    id: "admin-admin-com",
+    name: "Admin User",
+    email: "admin@admin.com",
+    role: "Admin",
+    department: "Administration",
+    team: null,
+  },
+];
 export const sandboxAdminPassword = "Admin@12345";
+export const sandboxAdminPasswords: Record<string, string> = {
+  "admin@cafm.local": sandboxAdminPassword,
+  "admin@admin.com": "12345",
+};
 const sessionMaxAgeSeconds = 60 * 60 * 12;
 
 function sessionSecret() {
@@ -44,8 +59,8 @@ export async function getCurrentUser() {
   const userId = token ? verifySessionToken(token) : null;
   if (!userId) return null;
 
-  if (!process.env.DATABASE_URL && userId === sandboxAdmin.id) {
-    return sandboxAdmin;
+  if (!process.env.DATABASE_URL) {
+    return sandboxAdmins.find((admin) => admin.id === userId) ?? null;
   }
 
   try {

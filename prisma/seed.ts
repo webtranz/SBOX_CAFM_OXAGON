@@ -3,8 +3,18 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const adminEmail = "admin@cafm.local";
-const adminPassword = "Admin@12345";
+const defaultAdmins = [
+  {
+    name: "System Administrator",
+    email: "admin@cafm.local",
+    password: "Admin@12345",
+  },
+  {
+    name: "Admin User",
+    email: "admin@admin.com",
+    password: "12345",
+  },
+];
 
 async function clearSeedData() {
   await prisma.housingHistory.deleteMany({});
@@ -56,35 +66,37 @@ async function clearSeedData() {
   await prisma.role.deleteMany({});
 
   await prisma.user.updateMany({ data: { teamId: null } });
-  await prisma.user.deleteMany({ where: { email: { not: adminEmail } } });
+  await prisma.user.deleteMany({ where: { email: { notIn: defaultAdmins.map((admin) => admin.email) } } });
   await prisma.team.deleteMany({});
 }
 
 async function main() {
   await clearSeedData();
 
-  const passwordHash = await bcrypt.hash(adminPassword, 10);
-  await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {
-      name: "System Administrator",
-      role: "Admin",
-      department: "Administration",
-      passwordHash,
-      active: true,
-      teamId: null,
-    },
-    create: {
-      name: "System Administrator",
-      email: adminEmail,
-      role: "Admin",
-      department: "Administration",
-      passwordHash,
-      active: true,
-    },
-  });
+  for (const admin of defaultAdmins) {
+    const passwordHash = await bcrypt.hash(admin.password, 10);
+    await prisma.user.upsert({
+      where: { email: admin.email },
+      update: {
+        name: admin.name,
+        role: "Admin",
+        department: "Administration",
+        passwordHash,
+        active: true,
+        teamId: null,
+      },
+      create: {
+        name: admin.name,
+        email: admin.email,
+        role: "Admin",
+        department: "Administration",
+        passwordHash,
+        active: true,
+      },
+    });
+  }
 
-  console.log(`Database seed complete. Admin login: ${adminEmail}`);
+  console.log(`Database seed complete. Admin logins: ${defaultAdmins.map((admin) => admin.email).join(", ")}`);
 }
 
 main()
