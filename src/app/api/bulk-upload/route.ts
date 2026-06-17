@@ -89,6 +89,7 @@ async function importRow(module: string, row: Row) {
   if (module === "buildings") return importBuilding(row);
   if (module === "spaces") return importSpace(row);
   if (module === "assets") return importAsset(row);
+  if (module === "housingAssets") return importHousingAsset(row);
   if (module === "inventory") return importInventory(row);
   if (module === "requests") return importRequest(row);
   if (module === "workOrders") return importWorkOrder(row);
@@ -299,6 +300,73 @@ async function importAsset(row: Row) {
     },
   });
   return importResult("asset", "UPSERT", asset, tag, name);
+}
+
+async function importHousingAsset(row: Row) {
+  const tag = value(row, "tag", "code", "Asset Code", "Housing Asset Code", "assetCode");
+  if (!tag) throw new Error("Asset Code is required");
+
+  const room = await housingRoomForAsset(row);
+  const assetValue = number(value(row, "assetValue", "Asset Value", "purchaseCost", "Purchase Cost"), 0);
+  const depreciationRate = number(value(row, "depreciationRate", "Depreciation Rate"), 0);
+  const purchaseDate = optionalDate(value(row, "purchaseDate", "Purchase Date"));
+  const currentValueInput = value(row, "currentValue", "Current Value");
+  const years = purchaseDate ? Math.max(0, (Date.now() - purchaseDate.getTime()) / (365 * 24 * 60 * 60 * 1000)) : 0;
+  const currentValue = currentValueInput
+    ? number(currentValueInput, assetValue)
+    : Math.max(0, Math.round((assetValue * Math.max(0, 1 - (depreciationRate / 100) * years)) * 100) / 100);
+  const roomLocation = value(row, "roomLocation", "Room Location", "roomNumber", "Room Number") || room?.roomNumber || "";
+  const buildingLocation = value(row, "buildingLocation", "Building Location", "building", "Building") || room?.block?.name || room?.property?.name || "";
+  const payload = {
+    name: value(row, "name", "Asset Name") || value(row, "description", "Description") || tag,
+    category: value(row, "category", "Category") || "Furniture",
+    description: value(row, "description", "Description", "notes", "Notes") || "",
+    brand: value(row, "brand", "Brand") || "",
+    model: value(row, "model", "Model") || "",
+    purchaseDate: purchaseDate || undefined,
+    supplierName: value(row, "supplierName", "Supplier Name") || "",
+    assetValue,
+    buildingLocation,
+    roomLocation,
+    custodianName: value(row, "custodianName", "Custodian Name") || "",
+    custodianContact: value(row, "custodianContact", "Custodian Contact") || "",
+    issuedTo: value(row, "issuedTo", "Issued To") || "",
+    issuedAt: optionalDate(value(row, "issuedAt", "Issued At")) || undefined,
+    transferredFrom: value(row, "transferredFrom", "Transferred From") || "",
+    transferredTo: value(row, "transferredTo", "Transferred To") || "",
+    transferredAt: optionalDate(value(row, "transferredAt", "Transferred At")) || undefined,
+    replacementOf: value(row, "replacementOf", "Replacement Of") || "",
+    replacedAt: optionalDate(value(row, "replacedAt", "Replaced At")) || undefined,
+    pmSchedule: value(row, "pmSchedule", "PM Schedule") || "",
+    nextPmDue: optionalDate(value(row, "nextPmDue", "Next PM Due")) || undefined,
+    depreciationRate,
+    currentValue,
+    lastInspectionAt: optionalDate(value(row, "lastInspectionAt", "Last Inspection At")) || undefined,
+    roomId: room?.id,
+    status: value(row, "status", "Status") || "ACTIVE",
+    serialNumber: value(row, "serialNumber", "Serial Number") || "",
+    warrantyExpiry: optionalDate(value(row, "warrantyExpiry", "Warranty Expiry")) || undefined,
+    qrCode: value(row, "qrCode", "QR Code") || `QR:${tag}`,
+    photoUrls: value(row, "photoUrls", "Photo URLs", "attachmentUrls", "Attachment URLs") || "",
+  };
+
+  const asset = await prisma.housingAsset.upsert({
+    where: { tag },
+    update: payload,
+    create: { tag, ...payload },
+  });
+  await prisma.housingHistory.create({
+    data: {
+      entity: "asset",
+      entityId: asset.id,
+      assetId: asset.id,
+      roomId: asset.roomId,
+      actor: "Bulk Upload",
+      action: value(row, "movementAction", "Movement Action") || "Housing asset bulk imported",
+      details: value(row, "notes", "Notes", "remarks", "Remarks") || `${asset.tag} / ${asset.status}`,
+    },
+  });
+  return importResult("housing_asset", "UPSERT", asset, tag, asset.name);
 }
 
 async function importInventory(row: Row) {
@@ -526,7 +594,7 @@ function importResult(recordType: string, action: string, record: { id?: string 
 }
 
 function rowIdentifier(module: string, row: Row) {
-  return value(row, "tag", "EQUIPMENTNO", "ASSET NUMBER", "sku", "ticketNo", "woNo", "code", "Location", "companyId", "email") || module || "unknown";
+  return value(row, "tag", "Asset Code", "Housing Asset Code", "EQUIPMENTNO", "ASSET NUMBER", "sku", "ticketNo", "woNo", "code", "Location", "companyId", "email") || module || "unknown";
 }
 
 function rowDisplayName(row: Row) {
@@ -608,6 +676,16 @@ function jobPlanPayload(row: Row) {
     steps: row.steps || row.jobPlan || "Inspect, execute, test and close.",
     safetyNotes: row.safetyNotes || "",
   };
+}
+
+async function housingRoomForAsset(row: Row) {
+  const roomId = value(row, "roomId", "Room Id");
+  if (roomId) return prisma.housingRoom.findUnique({ where: { id: roomId }, include: { property: true, block: true } });
+  const code = value(row, "roomCode", "Room Code");
+  if (code) return prisma.housingRoom.findUnique({ where: { code }, include: { property: true, block: true } });
+  const roomNumber = value(row, "roomNumber", "Room Number", "roomLocation", "Room Location");
+  if (!roomNumber) return null;
+  return prisma.housingRoom.findFirst({ where: { roomNumber }, include: { property: true, block: true } });
 }
 
 function required(row: Row, ...keys: string[]) {

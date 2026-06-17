@@ -304,6 +304,7 @@ const assetRegisterColumns: [string, string][] = [
   ["additionalNote", "ADDITIONAL_NOTE"],
 ];
 const assetTemplateHeader = assetRegisterColumns.map(([, label]) => label).join(",");
+const housingAssetTemplateHeader = "Asset Code,Asset Name,Category,Description,Brand,Model,Serial Number,Status,Room Code,Room Number,Building Location,Room Location,Custodian Name,Custodian Contact,Issued To,Issued At,Transferred From,Transferred To,Transferred At,Replacement Of,Replaced At,PM Schedule,Next PM Due,Purchase Date,Supplier Name,Asset Value,Depreciation Rate,Current Value,Last Inspection At,Warranty Expiry,QR Code,Photo URLs,Movement Action,Notes";
 const SHIFT_ELIGIBILITY_OPTIONS = ["Day only", "Night only", "Day & Night", "Not eligible"];
 const SHIFT_TYPE_OPTIONS = ["Day", "Night", "General", "Custom"];
 const ROSTER_STATUS_OPTIONS = ["Draft", "Finalized"];
@@ -6281,6 +6282,7 @@ function BulkUpload({ saving, onSubmit, initialModule }: { saving: boolean; onSu
               <option value="buildings">Buildings</option>
               <option value="spaces">Spaces</option>
               <option value="assets">Assets</option>
+              <option value="housingAssets">Housing Assets</option>
               <option value="categories">Asset Categories</option>
               <option value="inventory">Inventory</option>
               <option value="requests">Service Requests</option>
@@ -6313,6 +6315,7 @@ function Templates() {
     ["buildings", "Buildings", "code,name,site,city,country,floors,areaSqm"],
     ["spaces", "Spaces", "code,name,site,city,country,buildingCode,floor,type,capacity,areaSqm,occupancy"],
     ["assets", "Assets", assetTemplateHeader],
+    ["housingAssets", "Housing Assets", housingAssetTemplateHeader],
     ["departments", "Departments", "code,name,siteLocation,description"],
     ["employees", "Employees", "name,email,companyId,nationalityType,departmentCode,siteLocation"],
     ["teams", "Teams", "name,companyIdNumber,departmentCode,service,email,phone"],
