@@ -899,7 +899,7 @@ export function CafmConsole({ data, user, deferInitialData = false }: { data: Co
         <div className="flex items-center gap-2">
           <BrandLogoMark size="sm" />
           <div className="leading-tight">
-            <span className="mb-1 hidden w-fit border border-coral px-2 py-0.5 text-[9px] font-medium uppercase leading-none tracking-normal text-coral sm:block">Production System</span>
+            <span className="mb-1 hidden w-fit border border-emerald-500 px-2 py-0.5 text-[9px] font-medium uppercase leading-none tracking-normal text-emerald-600 sm:block">Sandbox</span>
             <span className="block text-sm font-bold text-slate-900">Tamimi Global</span>
             <span className="block text-[10px] text-slate-500">CAFM system</span>
           </div>
@@ -919,7 +919,7 @@ export function CafmConsole({ data, user, deferInitialData = false }: { data: Co
       <section className="h-screen min-w-0 overflow-hidden lg:pl-72">
         <aside className={`${mobileMenuOpen ? "fixed flex flex-col" : "hidden"} inset-y-0 left-0 z-50 w-72 overflow-y-auto border-r border-slate-100 bg-white scrollbar-thin lg:fixed lg:flex lg:w-72 lg:flex-col`}>
           <div className="border-b border-slate-100 p-6">
-            <div className="mb-3 ml-[60px] w-[122px] border border-coral py-1 text-center text-[10px] font-medium uppercase leading-none tracking-normal text-coral">Production System</div>
+            <div className="mb-3 ml-[60px] w-[122px] border border-emerald-500 py-1 text-center text-[10px] font-medium uppercase leading-none tracking-normal text-emerald-600">Sandbox</div>
             <div className="flex items-center gap-3">
               <BrandLogoMark />
               <div>
